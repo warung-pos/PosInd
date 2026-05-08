@@ -254,9 +254,10 @@ payment-gateway
 # 📄 License
 
 This project is developed for educational and collaborative purposes.
+1. Affifah Putri Deza   714240001
+2. Alifya Azzahra   714240011
+3. Al Yasmin Assa'diyah   714240014
 
 ---
 
-# 💜 POSIND
 
-Modern Fullstack SaaS POS System for Smart Businesses 🚀
