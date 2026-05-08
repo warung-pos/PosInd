@@ -1,4 +1,6 @@
-# Logs
+# =========================
+# LOGS
+# =========================
 logs
 *.log
 npm-debug.log*
@@ -7,18 +9,85 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# =========================
+# DEPENDENCIES
+# =========================
 node_modules
+backend/node_modules
+
+# =========================
+# BUILD FILES
+# =========================
 dist
 dist-ssr
-*.local
+build
 
-# Editor directories and files
+# =========================
+# ENVIRONMENT FILES
+# =========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+backend/.env
+backend/.env.local
+
+# =========================
+# CACHE
+# =========================
+.cache
+.parcel-cache
+.vite
+.eslintcache
+
+# =========================
+# SYSTEM FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# EDITOR / IDE
+# =========================
 .vscode/*
 !.vscode/extensions.json
+
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.swp
+
+# =========================
+# LOCAL CONFIG
+# =========================
+*.local
+
+# =========================
+# TEMP FILES
+# =========================
+tmp
+temp
+
+# =========================
+# TEST / COVERAGE
+# =========================
+coverage
+
+# =========================
+# OPTIONAL
+# Uncomment if needed
+# =========================
+
+# Ignore all SQL exports
+# *.sql
+
+# Ignore uploads
+# uploads/
+
+# Ignore generated reports
+# reports/
