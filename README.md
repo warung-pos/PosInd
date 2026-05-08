@@ -1,4 +1,4 @@
-# 🚀 POSIND — Fullstack SaaS Point of Sale System
+# 🚀 POSIND — WarungPOS Point of Sale System
 
 POSIND adalah aplikasi Point of Sale (POS) modern berbasis web yang dirancang untuk membantu bisnis mengelola transaksi, produk, stok, laporan, dan pengguna dalam satu platform.
 
