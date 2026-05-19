@@ -7,7 +7,6 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
 
-  // ✅ FRONTEND (React)
   {
     files: ['src/**/*.{js,jsx}'],
     extends: [
@@ -21,11 +20,10 @@ export default defineConfig([
     },
   },
 
-  // ✅ BACKEND (Node.js)
   {
     files: ['backend/**/*.js'],
     languageOptions: {
-      globals: globals.node, // 🔥 ini yang penting
+      globals: globals.node, 
     },
   },
 ])
