@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import authRoutes from './routes/auth.js';
 import posRoutes from './routes/pos.js';
 import productRoutes from './routes/products.js';
@@ -11,6 +12,8 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
 
 app.get('/', (req, res) => {
   res.send('API POS RUNNING 🚀');
