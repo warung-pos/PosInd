@@ -44,6 +44,18 @@ const Dashboard = ({ onBack }) => {
 
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const handleOpenModal = (product = null) => {
+    setCurrentProduct(product);
+    if (product) {
+      setFormData({ name: product.name, price: product.price, stock: product.stock, category: product.category || 'Minuman' });
+    } else {
+      setFormData({ name: '', price: '', stock: '', category: 'Minuman' });
+    }
+    setShowProductModal(true);
+  };
   
   const [plan, setPlan] = useState(() => localStorage.getItem('selectedPlan') || 'Basic (Gratis)');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -53,16 +65,22 @@ const Dashboard = ({ onBack }) => {
     try {
       const res = await fetch('http://localhost:3000/api/products');
       const data = await res.json();
-      setProducts(data);
-    } catch (err) { console.error(err); }
+      setProducts(Array.isArray(data) ? data : []);
+    } catch (err) { 
+      console.error(err); 
+      setProducts([]);
+    }
   };
 
   const fetchTransactions = async () => {
     try {
       const res = await fetch('http://localhost:3000/api/pos/transactions');
       const data = await res.json();
-      setTransactions(data);
-    } catch (err) { console.error(err); }
+      setTransactions(Array.isArray(data) ? data : []);
+    } catch (err) { 
+      console.error(err); 
+      setTransactions([]);
+    }
   };
 
   useEffect(() => {
@@ -180,7 +198,7 @@ const Dashboard = ({ onBack }) => {
           <div className="flex items-center gap-4">
             <div className="relative hidden sm:block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input type="text" placeholder="Cari..." className="bg-slate-800/50 border border-slate-700 rounded-full py-2 pl-10 pr-4 text-sm focus:border-purple-500 w-64 outline-none" />
+              <input type="text" placeholder="Cari produk..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-800/50 border border-slate-700 rounded-full py-2 pl-10 pr-4 text-sm focus:border-purple-500 w-64 outline-none" />
             </div>
             <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400"><Users size={20} /></div>
           </div>
