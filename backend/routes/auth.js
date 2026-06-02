@@ -175,4 +175,25 @@ router.post('/change-password/:id', async (req, res) => {
     }
 });
 
+// ✅ UPDATE PLAN
+router.put('/update-plan/:id', async (req, res) => {
+    const { id } = req.params;
+    const { plan } = req.body;
+
+    if (!plan) {
+        return res.status(400).json({ message: 'Plan wajib diisi' });
+    }
+
+    try {
+        const [rows] = await db.promise().query('SELECT id FROM users WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ message: 'User tidak ditemukan' });
+
+        await db.promise().query('UPDATE users SET plan = ? WHERE id = ?', [plan, id]);
+        res.json({ message: 'Plan berhasil diperbarui', plan });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Gagal memperbarui plan' });
+    }
+});
+
 export default router;
