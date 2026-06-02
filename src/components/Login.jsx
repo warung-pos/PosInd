@@ -35,9 +35,15 @@ const Login = ({ onSuccess, onBack }) => {
         return;
       }
 
-      // simpan token kalau ada (biasanya saat login)
+      // simpan token & user kalau ada (biasanya saat login)
       if (data.token) {
         localStorage.setItem('token', data.token);
+      }
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+        if (data.user.plan) {
+          localStorage.setItem('selectedPlan', data.user.plan);
+        }
       }
 
       // langsung masuk setelah login/register

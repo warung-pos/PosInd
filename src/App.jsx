@@ -29,7 +29,11 @@ export default function App() {
       setCurrentPage('login'); 
     } else {
       setIsLoggedIn(true);
-      localStorage.setItem('selectedPlan', plan.name);
+      if (plan.price === 0 || plan.name === 'Basic') {
+        localStorage.setItem('selectedPlan', 'Basic (Gratis)');
+      } else {
+        localStorage.setItem('pendingCheckoutPlan', JSON.stringify(plan));
+      }
       setCurrentPage('dashboard'); 
     }
   };
@@ -41,7 +45,11 @@ export default function App() {
         onSuccess={() => {
           setIsLoggedIn(true);
           if (selectedPlan) {
-            localStorage.setItem('selectedPlan', selectedPlan.name);
+            if (selectedPlan.price === 0 || selectedPlan.name === 'Basic') {
+              localStorage.setItem('selectedPlan', 'Basic (Gratis)');
+            } else {
+              localStorage.setItem('pendingCheckoutPlan', JSON.stringify(selectedPlan));
+            }
           }
           setCurrentPage('dashboard');
         }}

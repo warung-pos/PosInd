@@ -43,6 +43,16 @@ const Dashboard = ({ onBack }) => {
   const [showProductModal, setShowProductModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [selectedPlanData, setSelectedPlanData] = useState(null);
+  const [checkoutStep, setCheckoutStep] = useState('main'); // 'main' | 'payment_selector' | 'success'
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState({
+    id: 'shopeepay',
+    name: 'ShopeePay',
+    account: '•••• 0973',
+    logoColor: 'bg-[#ee4d2d]',
+    logoText: 'ShopeePay'
+  });
+  const [checkoutInvoice, setCheckoutInvoice] = useState('');
+  const [checkoutDate, setCheckoutDate] = useState('');
   
   const [currentProduct, setCurrentProduct] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -171,6 +181,25 @@ const Dashboard = ({ onBack }) => {
             }
         })
         .catch(err => console.error('Gagal memuat profil', err));
+    }
+  }, []);
+
+  // 🔥 DETEKSI PENDING CHECKOUT DARI LANDING PAGE
+  useEffect(() => {
+    const pendingPlanStr = localStorage.getItem('pendingCheckoutPlan');
+    if (pendingPlanStr) {
+      try {
+        const pendingPlan = JSON.parse(pendingPlanStr);
+        const matchedPlan = pricingPlans.find(p => p.name === pendingPlan.name);
+        if (matchedPlan) {
+          setSelectedPlanData(matchedPlan);
+          setCheckoutStep('main');
+          setShowCheckoutModal(true);
+        }
+      } catch (e) {
+        console.error('Gagal membaca pending checkout plan:', e);
+      }
+      localStorage.removeItem('pendingCheckoutPlan');
     }
   }, []);
 
@@ -323,20 +352,67 @@ const Dashboard = ({ onBack }) => {
   }, [showQRModal, activeQRTransaction]);
 
   const handleOpenCheckout = (planObj) => {
-    if (planObj.price === 'Gratis') {
+    if (planObj.price === 'Gratis' || planObj.numericPrice === 0) {
       confirmPlan(planObj.name, 'Gratis');
     } else {
       setSelectedPlanData(planObj);
+      setCheckoutStep('main');
       setShowCheckoutModal(true);
     }
   };
 
-  const confirmPlan = (name, price) => {
-    const fullPlanName = `${name} (${price})`;
-    setPlan(fullPlanName);
-    localStorage.setItem('selectedPlan', fullPlanName);
-    setShowCheckoutModal(false);
-    alert(`Sukses! Akun kamu sekarang menggunakan paket ${name}.`);
+  const confirmPlan = async (name, price) => {
+    setLoading(true);
+    const invoiceNum = `INV-SUB-${Math.floor(100000 + Math.random() * 900000)}`;
+    const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    
+    try {
+      if (user && user.id) {
+        const res = await fetch(`http://localhost:3000/api/auth/update-plan/${user.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: `${name} (${price})` })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          const fullPlanName = `${name} (${price})`;
+          setPlan(fullPlanName);
+          localStorage.setItem('selectedPlan', fullPlanName);
+          
+          const updatedUser = { ...user, plan: fullPlanName };
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          
+          if (price === 'Gratis') {
+            alert(`Sukses! Akun kamu sekarang menggunakan paket ${name}.`);
+          } else {
+            setCheckoutInvoice(invoiceNum);
+            setCheckoutDate(dateStr);
+            setCheckoutStep('success');
+          }
+        } else {
+          const data = await res.json();
+          alert(`Gagal memperbarui plan: ${data.message}`);
+        }
+      } else {
+        const fullPlanName = `${name} (${price})`;
+        setPlan(fullPlanName);
+        localStorage.setItem('selectedPlan', fullPlanName);
+        if (price === 'Gratis') {
+          alert(`Sukses! Akun kamu sekarang menggunakan paket ${name}.`);
+        } else {
+          setCheckoutInvoice(invoiceNum);
+          setCheckoutDate(dateStr);
+          setCheckoutStep('success');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Kesalahan koneksi ke server.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- LOGIK PRODUK ---
@@ -835,81 +911,225 @@ const Dashboard = ({ onBack }) => {
         </div>
       </main>
 
-      {/* MODAL CHECKOUT LANGGANAN (NEW) */}
+      {/* MODAL CHECKOUT LANGGANAN (NEW & HIGH FIDELITY) */}
       {showCheckoutModal && selectedPlanData && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
           <div className="bg-white text-[#1a1a1a] w-full max-w-[450px] rounded-[1.5rem] overflow-hidden shadow-2xl animate-in zoom-in duration-300">
-            {/* Header Checkout */}
-            <div className="p-6 flex items-center justify-between border-b border-gray-100">
-               <div className="flex items-center gap-3">
-                 <div className="w-12 h-12 bg-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-600/20">
-                   <Zap className="text-white" fill="white" size={24} />
-                 </div>
-                 <div>
-                   <h4 className="font-extrabold text-lg leading-tight">WarungPOS {selectedPlanData.name}</h4>
-                   <p className="text-xs text-gray-500 font-medium">Langganan</p>
-                 </div>
-               </div>
-               <div className="text-right">
-                 <p className="font-bold text-lg">{selectedPlanData.price}</p>
-                 <button onClick={() => setShowCheckoutModal(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-               </div>
-            </div>
-
-            {/* Billing Info */}
-            <div className="p-6 space-y-6">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h5 className="font-bold text-sm">Tagihan bulanan</h5>
-                  <p className="text-[10px] text-gray-400 font-medium mt-0.5">Awal penagihan: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            {checkoutStep === 'main' && (
+              <>
+                {/* Header Checkout */}
+                <div className="p-6 flex items-center justify-between border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-600/20">
+                      <Zap className="text-white" fill="white" size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-lg text-gray-900 leading-tight">WarungPOS {selectedPlanData.name}</h4>
+                      <p className="text-xs text-gray-500 font-medium">Langganan</p>
+                    </div>
+                  </div>
+                  <div className="text-right flex items-center gap-3">
+                    <button onClick={() => setShowCheckoutModal(false)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                      <X size={18} />
+                    </button>
+                  </div>
                 </div>
-                <p className="font-bold text-sm">{selectedPlanData.price}/bl</p>
-              </div>
 
-              {/* Payment Selector (Simulasi ShopeePay) */}
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-6 bg-orange-500 rounded flex items-center justify-center text-[8px] text-white font-bold italic">ShopeePay</div>
-                  <p className="text-sm font-bold">ShopeePay •••• 0973</p>
-                </div>
-                <ChevronRight size={18} className="text-gray-400" />
-              </div>
+                {/* Billing Info */}
+                <div className="p-6 space-y-6">
+                  <div className="flex justify-between items-center text-gray-900">
+                    <div>
+                      <h5 className="font-bold text-sm">Tagihan bulanan</h5>
+                      <p className="text-[10px] text-gray-400 font-medium mt-0.5">Awal penagihan: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    </div>
+                    <p className="font-bold text-sm">{selectedPlanData.price}/bl</p>
+                  </div>
 
-              <div className="space-y-4 pt-2">
-                <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
-                  Penagihan akan diperpanjang secara otomatis setiap bulan. Pengembalian dana tidak akan diberikan atas pembayaran untuk periode penagihan parsial. Batalkan kapan saja di Setelan. <span className="text-blue-600 cursor-pointer">Pelajari lebih lanjut</span>.
-                </p>
-                <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
-                  Dengan melanjutkan, Anda menyatakan bahwa Anda telah berusia minimum 18 tahun dan menyetujui <span className="text-blue-600 cursor-pointer">persyaratan ini</span>.
-                </p>
-              </div>
+                  {/* Payment Selector */}
+                  <div 
+                    onClick={() => setCheckoutStep('payment_selector')}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-200 cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition-all text-gray-900"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`px-2.5 py-1 rounded text-[10px] font-black text-white ${checkoutPaymentMethod.logoColor} uppercase tracking-wider italic`}>
+                        {checkoutPaymentMethod.logoText || checkoutPaymentMethod.name}
+                      </div>
+                      <p className="text-sm font-bold">{checkoutPaymentMethod.name} {checkoutPaymentMethod.account}</p>
+                    </div>
+                    <ChevronRight size={18} className="text-gray-400" />
+                  </div>
 
-              {/* Price Breakdown */}
-              <div className="pt-4 border-t border-gray-100 space-y-2">
-                <div className="flex justify-between text-xs text-gray-500 font-medium">
-                  <span>Sub-total</span>
-                  <span>{selectedPlanData.price}</span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-500 font-medium">
-                  <span>Pajak (11%)</span>
-                  <span>Rp {(selectedPlanData.numericPrice * 0.11).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-end pt-4">
-                  <span className="font-bold text-base">Total hari ini</span>
-                  <span className="font-black text-2xl">Rp {(selectedPlanData.numericPrice * 1.11).toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
+                  <div className="space-y-4 pt-2">
+                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
+                      Penagihan akan diperpanjang secara otomatis setiap bulan. Pengembalian dana tidak akan diberikan atas pembayaran untuk periode penagihan parsial. Batalkan kapan saja di Setelan. <span className="text-blue-600 cursor-pointer hover:underline font-semibold">Pelajari lebih lanjut</span>.
+                    </p>
+                    <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
+                      Dengan melanjutkan, Anda menyatakan bahwa Anda telah berusia minimum 18 tahun dan menyetujui <span className="text-blue-600 cursor-pointer hover:underline font-semibold">persyaratan ini</span>.
+                    </p>
+                  </div>
 
-            {/* Confirm Button */}
-            <div className="p-6 pt-2">
-              <button 
-                onClick={() => confirmPlan(selectedPlanData.name, selectedPlanData.price)}
-                className="w-full bg-[#065fd4] hover:bg-[#0551b8] text-white py-4 rounded-full font-bold text-sm transition-colors shadow-lg active:scale-95"
-              >
-                Beli
-              </button>
-            </div>
+                  {/* Price Breakdown */}
+                  <div className="pt-4 border-t border-gray-100 space-y-2 text-gray-600">
+                    <div className="flex justify-between text-xs font-medium">
+                      <span>Sub-total</span>
+                      <span>{selectedPlanData.price}</span>
+                    </div>
+                    <div className="flex justify-between text-xs font-medium">
+                      <span>Pajak (11%)</span>
+                      <span>Rp {(selectedPlanData.numericPrice * 0.11).toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between items-end pt-4 border-t border-gray-100/50">
+                      <span className="font-bold text-gray-900 text-sm">Total hari ini</span>
+                      <span className="font-black text-2xl text-gray-900">Rp {(selectedPlanData.numericPrice * 1.11).toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Confirm Button */}
+                <div className="p-6 pt-2">
+                  <button 
+                    onClick={() => confirmPlan(selectedPlanData.name, selectedPlanData.price)}
+                    disabled={loading}
+                    className="w-full bg-[#065fd4] hover:bg-[#0551b8] text-white py-4 rounded-full font-bold text-sm transition-all shadow-lg active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+                        Memproses...
+                      </>
+                    ) : (
+                      'Beli'
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {checkoutStep === 'payment_selector' && (
+              <>
+                {/* Header Selector */}
+                <div className="p-6 flex items-center justify-between border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setCheckoutStep('main')}
+                      className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition-colors animate-in slide-in-from-right-4 duration-300"
+                    >
+                      <ArrowRight size={18} className="rotate-180" />
+                    </button>
+                    <div>
+                      <h4 className="font-extrabold text-lg text-gray-900 leading-tight">Metode Pembayaran</h4>
+                      <p className="text-xs text-gray-500 font-medium">Pilih opsi pembayaran anda</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowCheckoutModal(false)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* List of Payment Methods */}
+                <div className="p-6 space-y-3 overflow-y-auto max-h-[380px] custom-scrollbar">
+                  {[
+                    { id: 'shopeepay', name: 'ShopeePay', account: '•••• 0973', logoColor: 'bg-[#ee4d2d]', logoText: 'ShopeePay' },
+                    { id: 'gopay', name: 'GoPay', account: '•••• 8821', logoColor: 'bg-[#00aed6]', logoText: 'GoPay' },
+                    { id: 'dana', name: 'DANA', account: '•••• 4920', logoColor: 'bg-[#108ee9]', logoText: 'DANA' },
+                    { id: 'ovo', name: 'OVO', account: '•••• 1544', logoColor: 'bg-[#4c2a86]', logoText: 'OVO' },
+                    { id: 'bca_va', name: 'BCA Virtual Account', account: '', logoColor: 'bg-[#005c9a]', logoText: 'BCA VA' },
+                    { id: 'mandiri_va', name: 'Mandiri Virtual Account', account: '', logoColor: 'bg-[#f7931e]', logoText: 'Mandiri' },
+                    { id: 'credit_card', name: 'Kartu Kredit', account: '•••• 4321', logoColor: 'bg-slate-700', logoText: 'VISA' },
+                  ].map((method) => (
+                    <div
+                      key={method.id}
+                      onClick={() => {
+                        setCheckoutPaymentMethod(method);
+                        setCheckoutStep('main');
+                      }}
+                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer hover:bg-slate-50 ${
+                        checkoutPaymentMethod.id === method.id 
+                          ? 'border-purple-600 bg-purple-50/30 font-bold' 
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`px-2 py-0.5 rounded text-[8px] font-black text-white ${method.logoColor} uppercase tracking-wider italic`}>
+                          {method.logoText}
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-900">{method.name}</p>
+                          {method.account && <p className="text-xs text-gray-500 font-medium">{method.account}</p>}
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                        checkoutPaymentMethod.id === method.id ? 'border-purple-600 bg-purple-600' : 'border-gray-300 bg-white'
+                      }`}>
+                        {checkoutPaymentMethod.id === method.id && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {checkoutStep === 'success' && (
+              <>
+                {/* Header Success */}
+                <div className="p-6 flex justify-end">
+                  <button onClick={() => setShowCheckoutModal(false)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Success Body */}
+                <div className="p-6 text-center space-y-6">
+                  {/* Checkmark Animation Container */}
+                  <div className="flex justify-center">
+                    <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center relative animate-in zoom-in duration-300">
+                      <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping"></div>
+                      <CheckCircle2 size={44} className="text-emerald-500 animate-in fade-in zoom-in duration-500" strokeWidth={2.5} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-extrabold text-2xl text-gray-900">Pembayaran Berhasil!</h4>
+                    <p className="text-sm text-gray-500 max-w-sm mx-auto">
+                      Selamat! Akun kamu sekarang sudah aktif menggunakan paket <span className="font-bold text-purple-600">{selectedPlanData.name}</span>.
+                    </p>
+                  </div>
+
+                  {/* Invoice Receipt Detail */}
+                  <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100 space-y-3 text-left">
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Nomor Invoice</span>
+                      <span className="font-mono font-bold text-gray-800">{checkoutInvoice}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Metode Pembayaran</span>
+                      <span className="font-bold text-gray-800">{checkoutPaymentMethod.name}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Tanggal Pembayaran</span>
+                      <span className="font-bold text-gray-800">{checkoutDate}</span>
+                    </div>
+                    <div className="h-px bg-gray-200/50 my-2"></div>
+                    <div className="flex justify-between text-sm">
+                      <span className="font-bold text-gray-700">Total Dibayar</span>
+                      <span className="font-black text-purple-600">Rp {(selectedPlanData.numericPrice * 1.11).toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Success Action Button */}
+                <div className="p-6 pt-2">
+                  <button 
+                    onClick={() => setShowCheckoutModal(false)}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-full font-bold text-sm transition-all shadow-lg active:scale-95 animate-pulse"
+                  >
+                    Mulai Gunakan Fitur
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
