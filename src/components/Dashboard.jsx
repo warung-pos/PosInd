@@ -31,11 +31,13 @@ import {
   Settings,
   Moon,
   Camera,
-  UserCircle
+  UserCircle,
+  Menu
 } from 'lucide-react';
 
 const Dashboard = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState('SmartBank (QRIS)');
@@ -603,7 +605,15 @@ const Dashboard = ({ onBack }) => {
       {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-20 flex items-center justify-between px-8 bg-[#0b0e17]/50 backdrop-blur-md border-b border-slate-800/50">
-          <h2 className="text-xl font-bold">{menuItems.find(i => i.id === activeTab)?.label}</h2>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowMobileSidebar(true)} 
+              className="md:hidden p-2 -ml-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800/50 transition-colors"
+            >
+              <Menu size={24} />
+            </button>
+            <h2 className="text-xl font-bold">{menuItems.find(i => i.id === activeTab)?.label}</h2>
+          </div>
           <div className="flex items-center gap-4">
             {/* Search Bar */}
             <div className="relative hidden sm:block">
@@ -611,11 +621,11 @@ const Dashboard = ({ onBack }) => {
               <input type="text" placeholder="Cari produk..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-800/50 border border-slate-700 rounded-full py-2 pl-10 pr-4 text-sm focus:border-purple-500 w-64 outline-none" />
             </div>
 
-            {/* Profile Avatar + Dropdown */}
+            {/* Profile Avatar Button */}
             <div className="relative">
               <button
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 hover:border-purple-500 flex items-center justify-center overflow-hidden transition-all shadow-lg active:scale-95"
+                className={`w-10 h-10 rounded-full bg-slate-800 border-2 hover:border-purple-500 flex items-center justify-center overflow-hidden transition-all shadow-lg active:scale-95 ${showProfileMenu ? 'border-purple-500 shadow-purple-500/15' : 'border-slate-700'}`}
               >
                 {profileData?.profile_image ? (
                   <img src={`http://localhost:3000/uploads/${profileData.profile_image}`} alt="Profile" className="w-full h-full object-cover" />
@@ -623,61 +633,45 @@ const Dashboard = ({ onBack }) => {
                   <UserCircle size={24} className="text-slate-400" />
                 )}
               </button>
-
-              {/* Profile Dropdown Menu */}
-              {showProfileMenu && (
-                <div className="absolute right-0 mt-3 w-64 bg-[#0f1423]/95 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-200 z-50 overflow-hidden">
-                  <div className="p-4 border-b border-slate-800/80 bg-slate-800/20">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-800 border border-slate-700 flex-shrink-0">
-                        {profileData?.profile_image ? (
-                          <img src={`http://localhost:3000/uploads/${profileData.profile_image}`} alt="Profile" className="w-full h-full object-cover" />
-                        ) : (
-                          <UserCircle size={32} className="text-slate-400 w-full h-full p-2" />
-                        )}
-                      </div>
-                      <div className="overflow-hidden">
-                        <h4 className="font-bold text-white text-sm truncate">{profileData?.name}</h4>
-                        <p className="text-xs text-slate-400 truncate">{profileData?.email}</p>
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                        <ShieldCheck size={12} /> {profileData?.role}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="p-2 space-y-1">
-                    <button onClick={handleOpenEditProfile} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-xl transition-all active:scale-95">
-                      <Pencil size={16} className="text-purple-400" /> Edit Profile
-                    </button>
-                    <button onClick={() => { setShowProfileMenu(false); setShowAccountSettingsModal(true); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-xl transition-all active:scale-95">
-                      <Settings size={16} className="text-blue-400" /> Pengaturan Akun
-                    </button>
-                    <button onClick={() => { setShowProfileMenu(false); setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); setPasswordMsg({ type: '', text: '' }); setShowChangePasswordModal(true); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-xl transition-all active:scale-95">
-                      <ShieldCheck size={16} className="text-emerald-400" /> Ganti Password
-                    </button>
-                    <div className="h-px bg-slate-800/50 my-1 mx-2"></div>
-                    <button onClick={toggleDarkMode} className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-xl transition-all active:scale-95">
-                      <div className="flex items-center gap-3"><Moon size={16} className="text-yellow-400" /> Dark Mode</div>
-                      <div className={`w-9 h-5 rounded-full relative transition-colors duration-300 ${darkMode ? 'bg-purple-600' : 'bg-slate-600'}`}>
-                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all duration-300 ${darkMode ? 'left-4' : 'left-0.5'}`}></div>
-                      </div>
-                    </button>
-                  </div>
-                  <div className="p-2 border-t border-slate-800/80 bg-slate-900/30">
-                    <button onClick={() => { setShowProfileMenu(false); setShowLogoutConfirmModal(true); }} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-bold text-red-400 hover:bg-red-500/10 rounded-xl transition-all active:scale-95">
-                      <LogOut size={16} /> Keluar
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           
+          {/* USER PROFILE MODAL */}
+          {showProfileMenu && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-[#0f1423] border border-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm">
+                <div className="flex items-start justify-between pb-4 border-b border-slate-800/80">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-800 border-2 border-slate-700">
+                      {profileData?.profile_image ? (
+                        <img src={`http://localhost:3000/uploads/${profileData.profile_image}`} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        <UserCircle size={48} className="text-slate-400 w-full h-full p-2" />
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-base leading-snug">{profileData?.name}</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">{profileData?.email}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowProfileMenu(false)} className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-800/50 rounded-lg"><X size={18} /></button>
+                </div>
+                
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <button onClick={handleOpenEditProfile} className="flex flex-col items-center gap-2 p-3 text-xs font-semibold bg-slate-800/50 rounded-xl hover:bg-slate-700"><Pencil size={18} className="text-purple-400" /> Edit</button>
+                  <button onClick={() => { setShowProfileMenu(false); setShowAccountSettingsModal(true); }} className="flex flex-col items-center gap-2 p-3 text-xs font-semibold bg-slate-800/50 rounded-xl hover:bg-slate-700"><Settings size={18} className="text-blue-400" /> Akun</button>
+                  <button onClick={() => { setShowProfileMenu(false); setShowChangePasswordModal(true); }} className="flex flex-col items-center gap-2 p-3 text-xs font-semibold bg-slate-800/50 rounded-xl hover:bg-slate-700"><ShieldCheck size={18} className="text-emerald-400" /> Password</button>
+                  <button onClick={toggleDarkMode} className="flex flex-col items-center gap-2 p-3 text-xs font-semibold bg-slate-800/50 rounded-xl hover:bg-slate-700"><Moon size={18} className="text-yellow-400" /> DarkMode</button>
+                </div>
+                
+                <button onClick={() => { setShowProfileMenu(false); setShowLogoutConfirmModal(true); }} className="w-full mt-4 flex items-center justify-center gap-2 p-3 text-xs font-bold text-red-400 bg-red-500/10 rounded-xl"><LogOut size={16} /> Keluar</button>
+              </div>
+            </div>
+          )}
+
           {/* TAB PAKET */}
           {activeTab === 'paket' && (
             <div className="animate-in fade-in py-10">
@@ -716,16 +710,26 @@ const Dashboard = ({ onBack }) => {
           {/* DASHBOARD TAB (Tetap Sama) */}
           {activeTab === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 {[
-                  { label: 'Pendapatan', value: `Rp ${transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString()}`, icon: <Wallet className="text-emerald-400" />, trend: '+12.5%' },
-                  { label: 'Transaksi', value: transactions.length.toString(), icon: <TrendingUp className="text-purple-400" />, trend: '+8.2%' },
-                  { label: 'Pelanggan', value: '89', icon: <Users className="text-blue-400" />, trend: '+5.4%' },
-                  { label: 'Stok Rendah', value: products.filter(p => p.stock < 20).length.toString(), icon: <Package className="text-orange-400" />, trend: '-2' },
+                  { label: 'Pendapatan', value: `Rp ${transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString()}`, icon: <Wallet className="text-emerald-400" />, trend: '+12.5%', up: true },
+                  { label: 'Transaksi', value: transactions.length.toString(), icon: <TrendingUp className="text-purple-400" />, trend: '+8.2%', up: true },
+                  { label: 'Pelanggan', value: '89', icon: <Users className="text-blue-400" />, trend: '+5.4%', up: true },
+                  { label: 'Stok Rendah', value: products.filter(p => p.stock < 20).length.toString(), icon: <Package className="text-orange-400" />, trend: '-2', up: false },
                 ].map((stat, i) => (
-                  <div key={i} className="bg-[#0f1423] p-6 rounded-3xl border border-slate-800 shadow-xl group transition-all hover:border-purple-500/30">
-                    <div className="flex justify-between items-start mb-4"><div className="p-3 bg-slate-800/50 rounded-2xl group-hover:scale-110 transition-transform">{stat.icon}</div><span className="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">{stat.trend}</span></div>
-                    <p className="text-slate-500 text-sm font-medium">{stat.label}</p><h3 className="text-2xl font-bold mt-1">{stat.value}</h3>
+                  <div key={i} className="bg-[#0f1423] p-5 rounded-3xl border border-slate-800 shadow-xl group transition-all hover:border-purple-500/30 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <div className="p-3 bg-slate-800/50 rounded-2xl group-hover:scale-110 transition-transform">
+                        {stat.icon}
+                      </div>
+                      <span className={`text-[10px] font-bold ${stat.up ? 'text-emerald-400 bg-emerald-400/10' : 'text-red-400 bg-red-400/10'} px-2.5 py-1 rounded-full`}>
+                        {stat.trend}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-slate-500 text-xs font-medium">{stat.label}</p>
+                      <h3 className="text-xl font-bold mt-0.5">{stat.value}</h3>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -896,14 +900,27 @@ const Dashboard = ({ onBack }) => {
           )}
 
           {activeTab === 'laporan' && (
-            <div className="animate-in fade-in space-y-8">
+            <div className="animate-in fade-in space-y-6">
                <div className="flex justify-between items-center"><h3 className="text-xl font-bold">Ringkasan Bisnis</h3></div>
-               <div className="grid md:grid-cols-3 gap-6">{[
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{[
                   { label: 'Pendapatan', value: `Rp ${transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString()}`, icon: <Wallet className="text-emerald-400" />, trend: '+15.2%', up: true },
                   { label: 'Transaksi', value: transactions.length.toString(), icon: <TrendingUp className="text-purple-400" />, trend: '+5.4%', up: true },
                   { label: 'Rata-rata Order', value: `Rp ${(transactions.length > 0 ? transactions.reduce((s,t) => s + Number(t.total), 0) / transactions.length : 0).toLocaleString()}`, icon: <BarChart3 className="text-blue-400" />, trend: '-2.1%', up: false },
                 ].map((stat, i) => (
-                  <div key={i} className="bg-[#0f1423] p-6 rounded-3xl border border-slate-800 shadow-xl"><p className="text-slate-500 text-sm font-medium">{stat.label}</p><h3 className="text-2xl font-bold mt-1">{stat.value}</h3></div>
+                  <div key={i} className="bg-[#0f1423] p-5 rounded-3xl border border-slate-800 shadow-xl flex flex-col gap-3 group transition-all hover:border-purple-500/30">
+                    <div className="flex items-center justify-between">
+                      <div className="p-3 bg-slate-800/50 rounded-2xl group-hover:scale-110 transition-transform">
+                        {stat.icon}
+                      </div>
+                      <span className={`text-[10px] font-bold ${stat.up ? 'text-emerald-400 bg-emerald-400/10' : 'text-red-400 bg-red-400/10'} px-2.5 py-1 rounded-full`}>
+                        {stat.trend}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-slate-500 text-xs font-medium">{stat.label}</p>
+                      <h3 className="text-xl font-bold mt-0.5">{stat.value}</h3>
+                    </div>
+                  </div>
                 ))}</div>
             </div>
           )}
@@ -1573,6 +1590,64 @@ const Dashboard = ({ onBack }) => {
         </div>
       )}
 
+      {/* MOBILE SIDEBAR DRAWER */}
+      {showMobileSidebar && (
+        <div className="fixed inset-0 z-[70] md:hidden flex">
+          {/* Backdrop */}
+          <div onClick={() => setShowMobileSidebar(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300" />
+          
+          {/* Sidebar Drawer */}
+          <aside className="relative flex flex-col w-64 h-full bg-[#0f1423] border-r border-slate-800 z-10 animate-in slide-in-from-left duration-200">
+            <div className="h-20 flex items-center justify-between px-6 border-b border-slate-800">
+              <div className="flex items-center">
+                <div className="bg-gradient-to-br from-purple-500 to-purple-700 w-8 h-8 rounded-lg flex items-center justify-center mr-3 shadow-lg">
+                  <ShoppingCart size={16} className="text-white" strokeWidth={3} />
+                </div>
+                <span className="text-xl font-bold tracking-tight">WARUNG<span className="text-purple-400">POS</span></span>
+              </div>
+              <button onClick={() => setShowMobileSidebar(false)} className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800/50 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="px-6 py-4 mx-4 my-4 bg-purple-500/5 border border-purple-500/20 rounded-2xl">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Paket Aktif</p>
+              <div className="flex items-center gap-2 text-purple-400">
+                <CheckCircle2 size={14} />
+                <p className="font-bold text-sm">{plan}</p>
+              </div>
+            </div>
+            
+            <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
+              {menuItems.map((item) => (
+                <button 
+                  key={item.id} 
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setShowMobileSidebar(false);
+                  }} 
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === item.id ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
+                >
+                  {item.icon} <span className="font-medium text-sm">{item.label}</span>
+                </button>
+              ))}
+            </nav>
+            
+            <div className="p-4 border-t border-slate-800">
+              <button 
+                onClick={() => {
+                  setShowMobileSidebar(false);
+                  onBack();
+                }} 
+                className="flex items-center gap-3 px-4 py-3 w-full text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-colors"
+              >
+                <LogOut size={20} /> <span className="font-medium text-sm">Keluar</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -1583,6 +1658,8 @@ const Dashboard = ({ onBack }) => {
         .bg-slate-100 .bg-slate-800\\/50 { background: rgba(226,232,240,0.6) !important; }
         .bg-slate-100 .bg-slate-900 { background: #f8fafc !important; }
         @keyframes slide-in-from-bottom-4 { from { transform: translateY(1rem); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        .animate-in.slide-in-from-left { animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       `}</style>
     </div>
   );
