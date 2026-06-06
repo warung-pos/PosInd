@@ -14,19 +14,13 @@ import {
   Users,
   Wallet,
   History,
-  FileText,
   Clock,
   ArrowRight,
   Pencil,
   X,
-  TrendingDown,
-  PieChart,
-  Calendar,
-  CreditCard,
   Zap,
   ShieldCheck,
   ChevronRight,
-  Info,
   Printer,
   Settings,
   Moon,
@@ -34,6 +28,89 @@ import {
   UserCircle,
   Menu
 } from 'lucide-react';
+
+const pricingPlans = [
+  {
+    name: 'Basic',
+    price: 'Gratis',
+    numericPrice: 0,
+    desc: 'Sempurna untuk memulai usaha kecil',
+    color: 'from-slate-500 to-slate-600',
+    icon: '🛒',
+    features: [
+      { text: 'Hingga 30 produk', included: true },
+      { text: '1 akun pengguna', included: true },
+      { text: 'Transaksi POS dasar', included: true },
+      { text: 'Laporan harian', included: true },
+      { text: 'Cetak struk (thermal)', included: true },
+      { text: 'Pembayaran Cash', included: true },
+      { text: 'Pembayaran QRIS', included: false },
+      { text: 'Laporan pajak & keuangan', included: false },
+      { text: 'Multi cabang', included: false },
+      { text: 'Export laporan (Excel/PDF)', included: false },
+      { text: 'Support prioritas 24/7', included: false },
+      { text: 'Custom branding struk', included: false },
+    ]
+  },
+  {
+    name: 'Pro',
+    price: 'Rp150.000',
+    numericPrice: 150000,
+    period: '/bulan',
+    desc: 'Solusi terbaik untuk UMKM berkembang',
+    color: 'from-purple-500 to-purple-700',
+    icon: '⚡',
+    popular: true,
+    features: [
+      { text: 'Produk tak terbatas', included: true },
+      { text: 'Hingga 5 akun pengguna', included: true },
+      { text: 'Transaksi POS lengkap', included: true },
+      { text: 'Laporan harian & mingguan', included: true },
+      { text: 'Cetak struk (thermal)', included: true },
+      { text: 'Pembayaran Cash', included: true },
+      { text: 'Pembayaran QRIS (Midtrans)', included: true },
+      { text: 'Laporan pajak & keuangan', included: true },
+      { text: 'Multi cabang', included: false },
+      { text: 'Export laporan (Excel/PDF)', included: true },
+      { text: 'Support prioritas 24/7', included: true },
+      { text: 'Custom branding struk', included: false },
+    ]
+  },
+  {
+    name: 'Enterprise',
+    price: 'Rp500.000',
+    numericPrice: 500000,
+    period: '/bulan',
+    desc: 'Untuk bisnis besar & multi-cabang',
+    color: 'from-amber-500 to-orange-600',
+    icon: '👑',
+    features: [
+      { text: 'Produk tak terbatas', included: true },
+      { text: 'Unlimited akun pengguna', included: true },
+      { text: 'Transaksi POS lengkap', included: true },
+      { text: 'Laporan real-time & analitik', included: true },
+      { text: 'Cetak struk (thermal)', included: true },
+      { text: 'Pembayaran Cash', included: true },
+      { text: 'Pembayaran QRIS (Midtrans)', included: true },
+      { text: 'Laporan pajak & keuangan', included: true },
+      { text: 'Multi cabang (unlimited)', included: true },
+      { text: 'Export laporan (Excel/PDF)', included: true },
+      { text: 'Support prioritas 24/7', included: true },
+      { text: 'Custom branding struk', included: true },
+    ]
+  },
+];
+
+const faqList = [
+  { q: 'Apakah bisa upgrade atau downgrade paket kapan saja?', a: 'Ya, kamu bisa upgrade atau downgrade paket kapan saja. Perubahan akan langsung berlaku setelah pembayaran dikonfirmasi.' },
+  { q: 'Apakah data saya aman saat upgrade?', a: 'Tentu! Semua data produk, transaksi, dan laporan kamu tetap aman saat melakukan perubahan paket.' },
+  { q: 'Metode pembayaran apa saja yang tersedia?', a: 'Kami menerima pembayaran melalui ShopeePay, GoPay, DANA, OVO, BCA Virtual Account, Mandiri Virtual Account, dan Kartu Kredit.' },
+  { q: 'Apakah ada garansi uang kembali?', a: 'Kami menyediakan garansi uang kembali dalam 7 hari pertama jika kamu tidak puas dengan layanan kami.' },
+  { q: 'Berapa batas produk di paket Basic?', a: 'Paket Basic memungkinkan kamu mengelola hingga 30 produk. Upgrade ke Pro untuk produk tak terbatas.' },
+];
+
+const generateInvoiceNumber = () => `INV-SUB-${Math.floor(100000 + Math.random() * 900000)}`;
+const getFormattedDate = () => new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const Dashboard = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -171,13 +248,14 @@ const Dashboard = ({ onBack }) => {
 
   // Fetch Latest Profile Data
   useEffect(() => {
-    if (user && user.id) {
-      fetch(`http://localhost:3000/api/auth/profile/${user.id}`)
+    const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    if (cachedUser && cachedUser.id) {
+      fetch(`http://localhost:3000/api/auth/profile/${cachedUser.id}`)
         .then(res => res.json())
         .then(data => {
             if (!data.message) {
                setProfileData(data);
-               const updatedUser = { ...user, ...data };
+               const updatedUser = { ...cachedUser, ...data };
                setUser(updatedUser);
                localStorage.setItem('user', JSON.stringify(updatedUser));
             }
@@ -185,7 +263,7 @@ const Dashboard = ({ onBack }) => {
         .catch(err => console.error('Gagal memuat profil', err));
     }
   }, []);
-
+  
   // 🔥 DETEKSI PENDING CHECKOUT DARI LANDING PAGE
   useEffect(() => {
     const pendingPlanStr = localStorage.getItem('pendingCheckoutPlan');
@@ -194,9 +272,11 @@ const Dashboard = ({ onBack }) => {
         const pendingPlan = JSON.parse(pendingPlanStr);
         const matchedPlan = pricingPlans.find(p => p.name === pendingPlan.name);
         if (matchedPlan) {
-          setSelectedPlanData(matchedPlan);
-          setCheckoutStep('main');
-          setShowCheckoutModal(true);
+          setTimeout(() => {
+            setSelectedPlanData(matchedPlan);
+            setCheckoutStep('main');
+            setShowCheckoutModal(true);
+          }, 0);
         }
       } catch (e) {
         console.error('Gagal membaca pending checkout plan:', e);
@@ -292,8 +372,11 @@ const Dashboard = ({ onBack }) => {
   };
 
   useEffect(() => {
-    fetchProducts();
-    fetchTransactions();
+    const timer = setTimeout(() => {
+      fetchProducts();
+      fetchTransactions();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [activeTab]);
 
   // Polling status dan countdown timer untuk QRIS
@@ -365,8 +448,8 @@ const Dashboard = ({ onBack }) => {
 
   const confirmPlan = async (name, price) => {
     setLoading(true);
-    const invoiceNum = `INV-SUB-${Math.floor(100000 + Math.random() * 900000)}`;
-    const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const invoiceNum = generateInvoiceNumber();
+    const dateStr = getFormattedDate();
     
     try {
       if (user && user.id) {
@@ -377,7 +460,7 @@ const Dashboard = ({ onBack }) => {
         });
         
         if (res.ok) {
-          const data = await res.json();
+          await res.json();
           const fullPlanName = `${name} (${price})`;
           setPlan(fullPlanName);
           localStorage.setItem('selectedPlan', fullPlanName);
@@ -564,12 +647,6 @@ const Dashboard = ({ onBack }) => {
     { id: 'paket', label: 'Langganan', icon: <Zap size={20} /> },
   ];
 
-  const pricingPlans = [
-    { name: 'Basic', price: 'Gratis', numericPrice: 0, desc: 'Cocok untuk usaha kecil', features: ['Stok Terbatas', 'Laporan Harian', '1 User'] },
-    { name: 'Pro', price: 'Rp150.000', numericPrice: 150000, period: '/bulan', desc: 'Paling cocok untuk UMKM', features: ['Stok Tak Terbatas', 'Laporan Pajak', '5 User', 'Support 24/7'], popular: true },
-    { name: 'Enterprise', price: 'Rp500.000', numericPrice: 500000, period: '/bulan', desc: 'Solusi lengkap bisnis besar', features: ['Custom Fitur', 'Multi Cabang', 'Unlimited User'] },
-  ];
-
   return (
     <div className={`flex h-screen font-sans overflow-hidden transition-colors duration-300 ${darkMode ? 'bg-[#0b0e17] text-white' : 'bg-slate-100 text-slate-800'}`}>
       
@@ -614,12 +691,15 @@ const Dashboard = ({ onBack }) => {
             </button>
             <h2 className="text-xl font-bold">{menuItems.find(i => i.id === activeTab)?.label}</h2>
           </div>
+
           <div className="flex items-center gap-4">
-            {/* Search Bar */}
-            <div className="relative hidden sm:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input type="text" placeholder="Cari produk..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-800/50 border border-slate-700 rounded-full py-2 pl-10 pr-4 text-sm focus:border-purple-500 w-64 outline-none" />
-            </div>
+            {/* Search Bar - hanya tampil di Produk & Transaksi POS */}
+            {(activeTab === 'produk' || activeTab === 'transaksi') && (
+              <div className="relative hidden sm:block">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                <input type="text" placeholder="Cari produk..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-800/50 border border-slate-700 rounded-full py-2 pl-10 pr-4 text-sm focus:border-purple-500 w-64 outline-none" />
+              </div>
+            )}
 
             {/* Profile Avatar Button */}
             <div className="relative">
@@ -674,36 +754,142 @@ const Dashboard = ({ onBack }) => {
 
           {/* TAB PAKET */}
           {activeTab === 'paket' && (
-            <div className="animate-in fade-in py-10">
-              <div className="text-center mb-12">
-                <h3 className="text-3xl font-bold mb-4 text-white">Upgrade Bisnis Kamu</h3>
-                <p className="text-slate-400">Pilih paket yang sesuai dengan kebutuhan warung kamu</p>
+            <div className="animate-in fade-in space-y-16 pb-10">
+
+              {/* HEADER */}
+              <div className="text-center pt-6">
+                <div className="inline-flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-bold px-4 py-2 rounded-full mb-6 uppercase tracking-widest">
+                  <Zap size={12} /> Pilih Paket Terbaik
+                </div>
+                <h3 className="text-4xl font-extrabold mb-4 text-white leading-tight">Kembangkan Bisnis Kamu<br /><span className="text-purple-400">Tanpa Batas</span></h3>
+                <p className="text-slate-400 max-w-lg mx-auto">Mulai gratis, upgrade kapan saja. Semua paket dilengkapi fitur POS modern untuk warung dan UMKM Indonesia.</p>
               </div>
-              <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+
+              {/* PRICING CARDS */}
+              <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto items-start">
                 {pricingPlans.map((p, i) => (
-                  <div key={i} className={`relative flex flex-col bg-[#0f1423] border ${p.popular ? 'border-purple-600 shadow-2xl scale-105' : 'border-slate-800'} rounded-[2.5rem] p-10 transition-all hover:translate-y-[-10px]`}>
-                    {p.popular && <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-purple-600 text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg">Paling Populer</div>}
-                    <div className="text-center mb-8">
-                      <h4 className="text-xl font-bold mb-2">{p.name}</h4>
-                      <p className="text-slate-400 text-xs mb-8">{p.desc}</p>
-                      <div className="flex items-end justify-center gap-1">
-                        <span className="text-3xl font-bold">{p.price}</span>
-                        {p.period && <span className="text-slate-500 text-xs mb-1">{p.period}</span>}
+                  <div key={i} className={`relative flex flex-col bg-[#0f1423] border ${
+                    p.popular ? 'border-purple-600 shadow-2xl shadow-purple-900/30 md:-mt-4' : 'border-slate-800'
+                  } rounded-[2rem] overflow-hidden transition-all hover:translate-y-[-6px] hover:shadow-xl`}>
+
+                    {/* Card gradient top bar */}
+                    <div className={`h-1.5 w-full bg-gradient-to-r ${p.color}`} />
+
+                    {p.popular && (
+                      <div className="absolute top-4 right-4 bg-purple-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">⭐ Terpopuler</div>
+                    )}
+
+                    <div className="p-8">
+                      {/* Plan icon & name */}
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${p.color} flex items-center justify-center text-2xl shadow-lg`}>{p.icon}</div>
+                        <div>
+                          <h4 className="text-lg font-extrabold text-white">{p.name}</h4>
+                          <p className="text-slate-500 text-xs">{p.desc}</p>
+                        </div>
+                      </div>
+
+                      {/* Price */}
+                      <div className="flex items-end gap-1 my-6">
+                        <span className="text-4xl font-black text-white">{p.price}</span>
+                        {p.period && <span className="text-slate-500 text-sm mb-1">{p.period}</span>}
+                      </div>
+
+                      {/* CTA Button */}
+                      <button
+                        onClick={() => handleOpenCheckout(p)}
+                        className={`w-full py-3.5 rounded-2xl font-bold transition-all text-sm active:scale-95 text-white shadow-lg bg-gradient-to-r ${p.color} hover:opacity-90 hover:shadow-xl`}
+                      >
+                        {p.name === 'Basic' ? '🚀 Mulai Gratis' : '📦 Pilih Paket'}
+                      </button>
+
+                      {/* Divider */}
+                      <div className="border-t border-slate-800 my-6" />
+
+                      {/* Features */}
+                      <div className="space-y-3">
+                        <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-4">Yang kamu dapatkan:</p>
+                        {p.features.map((f, j) => (
+                          <div key={j} className={`flex items-center gap-3 text-sm ${ f.included ? 'text-slate-200' : 'text-slate-600 line-through' }`}>
+                            {f.included
+                              ? <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                              : <X size={15} className="text-slate-700 shrink-0" />
+                            }
+                            <span>{f.text}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex-1 space-y-4 mb-10">
-                      {p.features.map((f, j) => (
-                        <div key={j} className="flex items-center gap-3 text-sm text-slate-300">
-                          <CheckCircle2 size={16} className="text-purple-400" /> <span>{f}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <button onClick={() => handleOpenCheckout(p)} className={`w-full py-4 rounded-2xl font-bold transition-all ${p.popular ? 'bg-purple-600 hover:bg-purple-700 shadow-lg' : 'bg-slate-800 hover:bg-slate-700'}`}>
-                      {p.name === 'Basic' ? 'Mulai Gratis' : 'Pilih Paket'}
-                    </button>
                   </div>
                 ))}
               </div>
+
+              {/* COMPARISON TABLE */}
+              <div className="max-w-5xl mx-auto">
+                <h4 className="text-xl font-bold text-center mb-8">Perbandingan Lengkap Fitur</h4>
+                <div className="bg-[#0f1423] border border-slate-800 rounded-3xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-800">
+                        <th className="px-6 py-5 text-left text-slate-400 font-semibold w-1/2">Fitur</th>
+                        <th className="px-4 py-5 text-center text-slate-400 font-semibold">Basic</th>
+                        <th className="px-4 py-5 text-center text-purple-400 font-bold bg-purple-500/5">Pro</th>
+                        <th className="px-4 py-5 text-center text-amber-400 font-semibold">Enterprise</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {[
+                        { label: 'Jumlah Produk', basic: '30 produk', pro: 'Tak Terbatas', ent: 'Tak Terbatas' },
+                        { label: 'Jumlah Pengguna', basic: '1 user', pro: '5 user', ent: 'Unlimited' },
+                        { label: 'Transaksi POS', basic: '✅', pro: '✅', ent: '✅' },
+                        { label: 'Cetak Struk', basic: '✅', pro: '✅', ent: '✅' },
+                        { label: 'Pembayaran Cash', basic: '✅', pro: '✅', ent: '✅' },
+                        { label: 'Pembayaran QRIS', basic: '❌', pro: '✅', ent: '✅' },
+                        { label: 'Laporan Harian', basic: '✅', pro: '✅', ent: '✅' },
+                        { label: 'Laporan Pajak', basic: '❌', pro: '✅', ent: '✅' },
+                        { label: 'Export Excel/PDF', basic: '❌', pro: '✅', ent: '✅' },
+                        { label: 'Multi Cabang', basic: '❌', pro: '❌', ent: '✅' },
+                        { label: 'Custom Branding Struk', basic: '❌', pro: '❌', ent: '✅' },
+                        { label: 'Support Prioritas 24/7', basic: '❌', pro: '✅', ent: '✅' },
+                      ].map((row, i) => (
+                        <tr key={i} className="hover:bg-slate-800/20 transition-colors">
+                          <td className="px-6 py-4 text-slate-300 font-medium">{row.label}</td>
+                          <td className="px-4 py-4 text-center text-slate-400">{row.basic}</td>
+                          <td className="px-4 py-4 text-center text-slate-200 bg-purple-500/5 font-medium">{row.pro}</td>
+                          <td className="px-4 py-4 text-center text-slate-400">{row.ent}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* FAQ */}
+              <div className="max-w-3xl mx-auto">
+                <h4 className="text-xl font-bold text-center mb-8">Pertanyaan Umum (FAQ)</h4>
+                <div className="space-y-4">
+                  {faqList.map((item, i) => (
+                    <div key={i} className="bg-[#0f1423] border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors">
+                      <p className="font-bold text-white mb-2 flex items-start gap-2"><span className="text-purple-400 shrink-0">Q.</span>{item.q}</p>
+                      <p className="text-slate-400 text-sm leading-relaxed pl-5">{item.a}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* BOTTOM CTA */}
+              <div className="max-w-2xl mx-auto text-center bg-gradient-to-br from-purple-900/30 to-slate-900 border border-purple-500/20 rounded-3xl p-10">
+                <div className="text-3xl mb-4">🚀</div>
+                <h4 className="text-2xl font-bold mb-3">Masih ragu?</h4>
+                <p className="text-slate-400 mb-6 text-sm">Coba paket Pro selama 7 hari gratis. Tidak perlu kartu kredit.</p>
+                <button
+                  onClick={() => handleOpenCheckout(pricingPlans.find(p => p.name === 'Pro'))}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-purple-600/20 active:scale-95"
+                >
+                  Coba Pro Gratis 7 Hari
+                </button>
+              </div>
+
             </div>
           )}
 

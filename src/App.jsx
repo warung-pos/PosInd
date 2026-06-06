@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Features from './components/Features';
@@ -8,17 +8,11 @@ import Login from './components/Login';
 import { appData } from './data/appData';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('landing');
-  // Cek apakah sudah ada token di localStorage saat pertama kali load
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('token'));
+  const [currentPage, setCurrentPage] = useState(() => {
+    const token = localStorage.getItem('token');
+    return token ? 'dashboard' : 'landing';
+  });
   const [selectedPlan, setSelectedPlan] = useState(null);
-
-  // Efek untuk menentukan halaman mana yang harus tampil di awal
-  useEffect(() => {
-    if (isLoggedIn) {
-      setCurrentPage('dashboard');
-    }
-  }, [isLoggedIn]);
 
   // 🔥 HANDLE PILIH PLAN (Dari Landing Page)
   const handleSelectPlan = (plan) => {
@@ -28,7 +22,6 @@ export default function App() {
     if (!token) {
       setCurrentPage('login'); 
     } else {
-      setIsLoggedIn(true);
       if (plan.price === 0 || plan.name === 'Basic') {
         localStorage.setItem('selectedPlan', 'Basic (Gratis)');
       } else {
@@ -43,7 +36,6 @@ export default function App() {
     return (
       <Login 
         onSuccess={() => {
-          setIsLoggedIn(true);
           if (selectedPlan) {
             if (selectedPlan.price === 0 || selectedPlan.name === 'Basic') {
               localStorage.setItem('selectedPlan', 'Basic (Gratis)');
@@ -63,7 +55,6 @@ export default function App() {
     return (
       <Dashboard 
         onBack={() => {
-          setIsLoggedIn(false);
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           setCurrentPage('landing');

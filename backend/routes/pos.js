@@ -5,12 +5,8 @@ const router = express.Router();
 import db from '../config/db.js';
 import midtransClient from 'midtrans-client';
 
-
-// Fungsi helper untuk mendapatkan instance Midtrans Core API secara dinamis setelah dotenv terisi
+// Fungsi helper Midtrans Core API
 const getCoreApi = () => {
-    console.log("SERVER KEY:", process.env.MIDTRANS_SERVER_KEY);
-    console.log("CLIENT KEY:", process.env.MIDTRANS_CLIENT_KEY);
-
     return new midtransClient.CoreApi({
         isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
         serverKey: process.env.MIDTRANS_SERVER_KEY || '',
@@ -18,7 +14,7 @@ const getCoreApi = () => {
     });
 };
 
-// Endpoint: POST /api/pos/pay
+// ✅ Endpoint: POST /api/pos/pay
 router.post('/pay', async (req, res) => {
     const { items, payment_method, user_id, cash_paid, change_due } = req.body;
 
@@ -36,10 +32,8 @@ router.post('/pay', async (req, res) => {
         let qrisUrl = null;
         let qrString = null;
 
-        // Jika metode pembayaran adalah QRIS, generate QRIS dummy/simulasi
         if (payment_method === 'SmartBank (QRIS)') {
             paymentStatus = 'Pending';
-            // Gunakan QRIS string simulasi yang valid untuk generator QR
             qrString = '00020101021226660014ID.CO.QRIS.WWW0215ID10200234567890303000';
             qrisUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qrString)}&size=220x220`;
         }
@@ -52,14 +46,15 @@ router.post('/pay', async (req, res) => {
 
         const transactionId = result.insertId;
 
-        // Simpan item transaksi ke MySQL
+        // ✅ Simpan item transaksi: snapshot nama produk + subtotal sebagai bukti permanen
         for (const item of items) {
+            const itemSubtotal = item.price * item.qty;
             await db.promise().query(
-                'INSERT INTO transaction_items (transaction_id, item_id, qty, price) VALUES (?, ?, ?, ?)',
-                [transactionId, item.id, item.qty, item.price]
+                'INSERT INTO transaction_items (transaction_id, item_id, product_name, qty, price, subtotal) VALUES (?, ?, ?, ?, ?, ?)',
+                [transactionId, item.id || null, item.name, item.qty, item.price, itemSubtotal]
             );
 
-            // Jika pembayaran langsung sukses (Tunai / E-Wallet), langsung potong stok
+            // Jika pembayaran langsung sukses (Cash / E-Wallet), langsung potong stok
             if (paymentStatus === 'Selesai') {
                 await db.promise().query(
                     'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?',
@@ -84,75 +79,98 @@ router.post('/pay', async (req, res) => {
     }
 });
 
-// Endpoint: GET /api/pos/status/:invoice
+// ✅ Endpoint: GET /api/pos/status/:invoice
 router.get('/status/:invoice', async (req, res) => {
     const { invoice } = req.params;
-
     try {
-        // Ambil transaksi lokal dari DB
         const [rows] = await db.promise().query('SELECT * FROM transactions WHERE invoice = ?', [invoice]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
-        }
-
-        const transaction = rows[0];
-        res.json({ status: transaction.status });
-
+        if (rows.length === 0) return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
+        res.json({ status: rows[0].status });
     } catch (err) {
         console.error('POS Status Check Error:', err);
         res.json({ status: 'Pending' });
     }
 });
 
-// Endpoint: POST /api/pos/simulate-success/:invoice
+// ✅ Endpoint: POST /api/pos/simulate-success/:invoice
 router.post('/simulate-success/:invoice', async (req, res) => {
     const { invoice } = req.params;
-
     try {
-        // Ambil transaksi lokal dari DB
         const [rows] = await db.promise().query('SELECT * FROM transactions WHERE invoice = ?', [invoice]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
-        }
+        if (rows.length === 0) return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
 
         const transaction = rows[0];
 
         if (transaction.status === 'Pending') {
-            // Update status menjadi Selesai di DB
             await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
 
-            // Ambil items dari transaksi ini
             const [items] = await db.promise().query(
-                'SELECT * FROM transaction_items WHERE transaction_id = ?', 
+                'SELECT * FROM transaction_items WHERE transaction_id = ?',
                 [transaction.id]
             );
 
-            // Kurangi stok masing-masing produk
             for (const item of items) {
-                await db.promise().query(
-                    'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?',
-                    [item.qty, item.item_id]
-                );
+                if (item.item_id) {
+                    await db.promise().query(
+                        'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?',
+                        [item.qty, item.item_id]
+                    );
+                }
             }
         }
 
         res.json({ message: 'Simulasi pembayaran berhasil', status: 'Selesai' });
-
     } catch (err) {
         console.error('POS Simulate Success Error:', err);
         res.status(500).json({ message: 'Gagal melakukan simulasi pembayaran' });
     }
 });
 
-// Endpoint: GET /api/pos/transactions
+// ✅ Endpoint: GET /api/pos/transactions — list semua transaksi beserta detail item
 router.get('/transactions', async (req, res) => {
     try {
-        const [rows] = await db.promise().query('SELECT * FROM transactions ORDER BY created_at DESC');
-        res.json(rows);
+        const [transactions] = await db.promise().query(
+            'SELECT * FROM transactions ORDER BY created_at DESC'
+        );
+
+        if (transactions.length === 0) return res.json([]);
+
+        // Ambil semua items dalam 1 query (efisien)
+        const transactionIds = transactions.map(t => t.id);
+        const [allItems] = await db.promise().query(
+            'SELECT * FROM transaction_items WHERE transaction_id IN (?)',
+            [transactionIds]
+        );
+
+        // Gabungkan items ke transaksi masing-masing
+        const result = transactions.map(t => ({
+            ...t,
+            items: allItems.filter(item => item.transaction_id === t.id)
+        }));
+
+        res.json(result);
     } catch (err) {
+        console.error('GET transactions error:', err);
         res.status(500).json({ message: 'Gagal mengambil riwayat' });
     }
 });
 
-export default router;
+// ✅ Endpoint: GET /api/pos/transactions/:id — detail 1 transaksi
+router.get('/transactions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await db.promise().query('SELECT * FROM transactions WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
 
+        const [items] = await db.promise().query(
+            'SELECT * FROM transaction_items WHERE transaction_id = ?', [id]
+        );
+
+        res.json({ ...rows[0], items });
+    } catch (err) {
+        console.error('GET transaction detail error:', err);
+        res.status(500).json({ message: 'Gagal mengambil detail transaksi' });
+    }
+});
+
+export default router;
