@@ -22,10 +22,18 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// 1. Ambil Semua Produk
+// 1. Ambil Semua Produk (dengan filter Cabang)
 router.get('/', async (req, res) => {
+    const { branch } = req.query;
     try {
-        const [rows] = await db.promise().query('SELECT * FROM products ORDER BY created_at DESC');
+        let query = 'SELECT * FROM products';
+        let params = [];
+        if (branch) {
+            query += ' WHERE branch = ?';
+            params.push(branch);
+        }
+        query += ' ORDER BY created_at DESC';
+        const [rows] = await db.promise().query(query, params);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Gagal mengambil data produk' });
@@ -34,14 +42,32 @@ router.get('/', async (req, res) => {
 
 // 2. Tambah Produk Baru
 router.post('/', upload.single('image'), async (req, res) => {
-    const { name, price, stock, category } = req.body;
+    const { name, price, stock, category, branch } = req.body;
     const image = req.file ? req.file.filename : null;
+    const userId = req.headers['x-user-id'];
+
     try {
+        // Enforce product limit for Basic plan
+        if (userId) {
+            const [userRows] = await db.promise().query('SELECT plan FROM users WHERE id = ?', [userId]);
+            if (userRows.length > 0) {
+                const userPlan = userRows[0].plan || 'basic';
+                if (userPlan.toLowerCase().includes('basic')) {
+                    const [prodCountRows] = await db.promise().query('SELECT COUNT(*) as total FROM products');
+                    if (prodCountRows[0].total >= 30) {
+                        return res.status(403).json({
+                            message: 'Batas produk untuk paket Basic adalah 30 produk. Silakan upgrade ke paket Pro atau Enterprise.'
+                        });
+                    }
+                }
+            }
+        }
+
         const [result] = await db.promise().query(
-            'INSERT INTO products (name, price, stock, category, image) VALUES (?, ?, ?, ?, ?)',
-            [name, price, stock, category || 'Minuman', image]
+            'INSERT INTO products (name, price, stock, category, image, branch) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, price, stock, category || 'Minuman', image, branch || 'Cabang Utama']
         );
-        res.status(201).json({ id: result.insertId, name, price, stock, category, image });
+        res.status(201).json({ id: result.insertId, name, price, stock, category, image, branch: branch || 'Cabang Utama' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Gagal menambah produk' });
@@ -51,7 +77,7 @@ router.post('/', upload.single('image'), async (req, res) => {
 // 3. Update Produk
 router.put('/:id', upload.single('image'), async (req, res) => {
     const { id } = req.params;
-    const { name, price, stock, category } = req.body;
+    const { name, price, stock, category, branch } = req.body;
     
     try {
         // Ambil gambar produk lama untuk dihapus jika diganti
@@ -72,10 +98,10 @@ router.put('/:id', upload.single('image'), async (req, res) => {
         }
 
         await db.promise().query(
-            'UPDATE products SET name = ?, price = ?, stock = ?, category = ?, image = ? WHERE id = ?',
-            [name, price, stock, category || 'Minuman', image, id]
+            'UPDATE products SET name = ?, price = ?, stock = ?, category = ?, image = ?, branch = ? WHERE id = ?',
+            [name, price, stock, category || 'Minuman', image, branch || 'Cabang Utama', id]
         );
-        res.json({ message: 'Produk berhasil diupdate', image });
+        res.json({ message: 'Produk berhasil diupdate', image, branch: branch || 'Cabang Utama' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Gagal update produk' });

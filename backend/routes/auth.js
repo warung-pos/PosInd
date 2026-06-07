@@ -194,7 +194,7 @@ router.post('/change-password/:id', async (req, res) => {
   }
 });
 
-// ✅ UPDATE PLAN
+// ✅ UPDATE PLAN (Synchronizes to staff accounts as well)
 router.put('/update-plan/:id', async (req, res) => {
   const { id } = req.params;
   const { plan } = req.body;
@@ -207,11 +207,118 @@ router.put('/update-plan/:id', async (req, res) => {
     const [rows] = await db.promise().query('SELECT id FROM users WHERE id = ?', [id]);
     if (rows.length === 0) return res.status(404).json({ message: 'User tidak ditemukan' });
 
-    await db.promise().query('UPDATE users SET plan = ? WHERE id = ?', [plan, id]);
+    await db.promise().query('UPDATE users SET plan = ? WHERE id = ? OR admin_id = ?', [plan, id, id]);
     res.json({ message: 'Plan berhasil diperbarui', plan });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Gagal memperbarui plan' });
+  }
+});
+
+// ✅ GET STAFF (Fetch all cashiers under an admin)
+router.get('/staff', async (req, res) => {
+  const { admin_id } = req.query;
+  if (!admin_id) {
+    return res.status(400).json({ message: 'admin_id wajib disertakan' });
+  }
+  try {
+    const [rows] = await db.promise().query(
+      'SELECT id, email, name, role, profile_image, plan FROM users WHERE admin_id = ? ORDER BY id DESC',
+      [admin_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Gagal mengambil data staf' });
+  }
+});
+
+// ✅ POST STAFF (Create cashier under an admin with subscription limits check)
+router.post('/staff', async (req, res) => {
+  const { name, email, password, role, admin_id } = req.body;
+
+  if (!email || !password || !name || !admin_id) {
+    return res.status(400).json({ message: 'Semua kolom wajib diisi' });
+  }
+
+  try {
+    // 1. Get Admin Details (specifically their plan)
+    const [adminRows] = await db.promise().query('SELECT plan FROM users WHERE id = ?', [admin_id]);
+    if (adminRows.length === 0) {
+      return res.status(404).json({ message: 'Admin tidak ditemukan' });
+    }
+    const adminPlan = adminRows[0].plan || 'basic';
+
+    // 2. Enforce limits based on subscription plan
+    if (adminPlan.toLowerCase().includes('basic')) {
+      return res.status(403).json({
+        message: 'Paket Basic hanya mendukung 1 pengguna (Admin saja). Silakan upgrade ke paket Pro atau Enterprise untuk menambah staf.'
+      });
+    } else if (adminPlan.toLowerCase().includes('pro')) {
+      const [countRows] = await db.promise().query('SELECT COUNT(*) as total FROM users WHERE admin_id = ?', [admin_id]);
+      if (countRows[0].total >= 4) { // Admin (1) + Staff (4) = 5 users total
+        return res.status(403).json({
+          message: 'Batas pengguna untuk paket Pro adalah 5 pengguna (1 Admin + 4 Staf). Silakan upgrade ke paket Enterprise untuk staf tak terbatas.'
+        });
+      }
+    }
+
+    // 3. Create staff user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    db.query(
+      'INSERT INTO users (email, password, name, role, plan, admin_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [email, hashedPassword, name, role || 'Kasir', adminPlan, admin_id],
+      (err, result) => {
+        if (err) {
+          return res.status(500).json({ message: 'Email sudah digunakan oleh staf/pengguna lain' });
+        }
+        res.status(201).json({
+          message: 'Staf berhasil didaftarkan',
+          user: {
+            id: result.insertId,
+            email,
+            name,
+            role: role || 'Kasir',
+            plan: adminPlan,
+            admin_id
+          }
+        });
+      }
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error saat mendaftarkan staf' });
+  }
+});
+
+// ✅ DELETE STAFF (Delete cashier under an admin)
+router.delete('/staff/:id', async (req, res) => {
+  const { id } = req.params;
+  const { admin_id } = req.query;
+
+  if (!admin_id) {
+    return res.status(400).json({ message: 'admin_id wajib disertakan untuk verifikasi' });
+  }
+
+  try {
+    // Delete profile image if exists
+    const [rows] = await db.promise().query('SELECT profile_image FROM users WHERE id = ? AND admin_id = ?', [id, admin_id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Staf tidak ditemukan atau Anda tidak berwenang' });
+    }
+
+    if (rows[0].profile_image) {
+      const imgPath = path.join('uploads', rows[0].profile_image);
+      if (fs.existsSync(imgPath)) {
+        fs.unlinkSync(imgPath);
+      }
+    }
+
+    await db.promise().query('DELETE FROM users WHERE id = ? AND admin_id = ?', [id, admin_id]);
+    res.json({ message: 'Staf berhasil dihapus' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Gagal menghapus staf' });
   }
 });
 

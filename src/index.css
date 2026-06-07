@@ -37,62 +37,41 @@ body {
 }
 
 @media print {
-  /* Hapus background gelap dan paksa warna cetak hitam/putih */
+  /* Sembunyikan semua, hanya tampilkan #invoice-print */
   html, body {
     background-color: white !important;
     color: black !important;
     margin: 0 !important;
     padding: 0 !important;
+    width: 80mm !important;
   }
 
-  /* Sembunyikan seluruh isi halaman secara default */
-  body * {
-    visibility: hidden;
-  }
+  body * { visibility: hidden; }
 
-  /* Tampilkan hanya area invoice-print dan turunannya */
   #invoice-print,
   #invoice-print * {
-    visibility: visible;
+    visibility: visible !important;
   }
 
-  /* Posisikan absolut di sudut kiri atas kertas cetak */
   #invoice-print {
-    position: absolute !important;
-    left: 0 !important;
+    position: fixed !important;
     top: 0 !important;
-    width: 80mm !important; /* Pas lebar thermal receipt printer */
+    left: 0 !important;
+    width: 100% !important;
     background: white !important;
     color: black !important;
-    padding: 20px !important;
+    padding: 16px !important;
     box-sizing: border-box !important;
-    margin: 0 !important;
+    font-size: 12px !important;
+    font-family: 'Courier New', monospace !important;
   }
 
-  /* Reset properti modal/layout induk agar tidak memotong rendering kontainer cetak */
-  #root,
-  .fixed,
-  .backdrop-blur-md,
-  .overflow-hidden,
-  .max-w-md {
-    position: static !important;
-    overflow: visible !important;
-    display: block !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    transform: none !important;
-    filter: none !important;
-    backdrop-filter: none !important;
-    height: auto !important;
-    width: auto !important;
-  }
-
-  /* Hilangkan margin default browser */
   @page {
+    size: 80mm auto;
     margin: 0;
   }
 }
+
 
 /* Custom premium micro-animations */
 @keyframes fadeIn {

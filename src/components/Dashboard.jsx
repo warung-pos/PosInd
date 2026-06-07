@@ -117,7 +117,7 @@ const Dashboard = ({ onBack }) => {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState('SmartBank (QRIS)');
+  const [paymentMethod, setPaymentMethod] = useState(() => (localStorage.getItem('selectedPlan') || 'Basic (Gratis)').toLowerCase().includes('basic') ? 'Cash' : 'SmartBank (QRIS)');
   const [cashReceived, setCashReceived] = useState('');
   const [showProductModal, setShowProductModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
@@ -158,6 +158,11 @@ const Dashboard = ({ onBack }) => {
   const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const handleOpenModal = (product = null) => {
+    if (!product && plan.toLowerCase().includes('basic') && products.length >= 30) {
+      setUpgradeModalReason('Batas produk untuk paket Basic adalah 30 produk. Upgrade ke Pro untuk produk tak terbatas!');
+      setShowUpgradeModal(true);
+      return;
+    }
     setCurrentProduct(product);
     if (product) {
       setFormData({ 
@@ -229,6 +234,25 @@ const Dashboard = ({ onBack }) => {
     profile_image: user?.profile_image || null,
   });
   const [editProfileForm, setEditProfileForm] = useState({ name: '', email: '', imageFile: null, imagePreview: '' });
+
+  // Plan-specific States (Branches, Staff, Receipt Branding, Locks)
+  const [activeBranch, setActiveBranch] = useState(() => localStorage.getItem('activeBranch') || 'Cabang Utama');
+  const [branches, setBranches] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('branches') || '["Cabang Utama"]'); }
+    catch { return ["Cabang Utama"]; }
+  });
+  const [staff, setStaff] = useState([]);
+  const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'Kasir' });
+  const [showBranchSettings, setShowBranchSettings] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [receiptSettings, setReceiptSettings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('receiptSettings') || '{"title":"WARUNGPOS","headerNote":"Premium Digital POS System","footerNote":"Terima kasih atas kunjungan Anda! Powered by WarungPOS"}'); }
+    catch { return { title: "WARUNGPOS", headerNote: "Premium Digital POS System", footerNote: "Terima kasih atas kunjungan Anda! Powered by WarungPOS" }; }
+  });
+  const [showReceiptBrandingModal, setShowReceiptBrandingModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeModalReason, setUpgradeModalReason] = useState('');
 
   const showToast = (type, text) => {
     setToast({ type, text });
@@ -351,12 +375,29 @@ const Dashboard = ({ onBack }) => {
   // Load Data
   const fetchProducts = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/products');
+      const isEnterprise = plan.toLowerCase().includes('enterprise');
+      const branchParam = isEnterprise ? `?branch=${encodeURIComponent(activeBranch)}` : '';
+      const res = await fetch(`http://localhost:3000/api/products${branchParam}`);
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : []);
     } catch (err) { 
       console.error(err); 
       setProducts([]);
+    }
+  };
+
+  const fetchStaff = async () => {
+    if (!user || !user.id) return;
+    if (plan.toLowerCase().includes('basic')) return;
+    try {
+      const adminId = user.admin_id || user.id;
+      const res = await fetch(`http://localhost:3000/api/auth/staff?admin_id=${adminId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStaff(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Gagal mengambil data staf:', err);
     }
   };
 
@@ -375,9 +416,12 @@ const Dashboard = ({ onBack }) => {
     const timer = setTimeout(() => {
       fetchProducts();
       fetchTransactions();
+      if (activeTab === 'staf') {
+        fetchStaff();
+      }
     }, 0);
     return () => clearTimeout(timer);
-  }, [activeTab]);
+  }, [activeTab, activeBranch]);
 
   // Polling status dan countdown timer untuk QRIS
   useEffect(() => {
@@ -514,16 +558,33 @@ const Dashboard = ({ onBack }) => {
       if (formData.imageFile) {
         data.append('image', formData.imageFile);
       }
+      
+      const isEnterprise = plan.toLowerCase().includes('enterprise');
+      data.append('branch', isEnterprise ? activeBranch : 'Cabang Utama');
+
+      const headers = {};
+      if (user && user.id) {
+        headers['x-user-id'] = String(user.id);
+      }
 
       const res = await fetch(url, {
         method: currentProduct ? 'PUT' : 'POST',
+        headers: headers,
         body: data
       });
+      
       if (res.ok) { 
         fetchProducts(); 
         handleCloseModal(); 
+        showToast('success', `Produk berhasil ${currentProduct ? 'diperbarui' : 'ditambahkan'}`);
+      } else {
+        const errData = await res.json();
+        showToast('error', errData.message || 'Gagal menyimpan produk');
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+      console.error(err);
+      showToast('error', 'Kesalahan koneksi ke server');
+    }
   };
 
   const handleDeleteProduct = async (id) => {
@@ -534,6 +595,53 @@ const Dashboard = ({ onBack }) => {
       });
       if (res.ok) { fetchProducts(); }
     } catch (err) { console.error(err); }
+  };
+
+  // --- LOGIK MANAJEMEN STAF ---
+  const handleSaveStaff = async (e) => {
+    e.preventDefault();
+    if (!staffForm.name || !staffForm.email || !staffForm.password) {
+      showToast('error', 'Semua kolom wajib diisi!');
+      return;
+    }
+    const adminId = user.id;
+    try {
+      const res = await fetch('http://localhost:3000/api/auth/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...staffForm, admin_id: adminId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('success', 'Staf berhasil ditambahkan!');
+        setStaffForm({ name: '', email: '', password: '', role: 'Kasir' });
+        setShowAddStaffModal(false);
+        fetchStaff();
+      } else {
+        showToast('error', data.message || 'Gagal menambahkan staf');
+      }
+    } catch (err) {
+      showToast('error', 'Kesalahan koneksi ke server');
+    }
+  };
+
+  const handleDeleteStaff = async (staffId) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus staf ini?')) return;
+    const adminId = user.id;
+    try {
+      const res = await fetch(`http://localhost:3000/api/auth/staff/${staffId}?admin_id=${adminId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('success', 'Staf berhasil dihapus!');
+        fetchStaff();
+      } else {
+        showToast('error', data.message || 'Gagal menghapus staf');
+      }
+    } catch (err) {
+      showToast('error', 'Kesalahan koneksi ke server');
+    }
   };
 
   // --- LOGIK POS ---
@@ -572,10 +680,12 @@ const Dashboard = ({ onBack }) => {
     if (cart.length === 0) return;
     setLoading(true);
     const isCash = paymentMethod === 'Cash';
+    const isEnterprise = plan.toLowerCase().includes('enterprise');
     const payload = { 
       items: cart, 
       payment_method: paymentMethod, 
-      user_id: user.id 
+      user_id: user.id,
+      branch: isEnterprise ? activeBranch : 'Cabang Utama'
     };
     if (isCash) {
       payload.cash_paid = Number(cashReceived);
@@ -634,8 +744,197 @@ const Dashboard = ({ onBack }) => {
     }
   };
 
+  const handlePrintReceipt = () => {
+    if (!activeQRTransaction) return;
+    const tx = activeQRTransaction;
+    const subtotal = tx.total - (tx.fee_pos || 0);
+    const dateStr = tx.created_at 
+      ? new Date(tx.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : new Date().toLocaleString('id-ID');
+
+    const itemsHtml = (tx.items || []).map(item => `
+      <tr>
+        <td style="padding:3px 0;font-size:11px;">${item.name}</td>
+        <td style="text-align:center;font-size:11px;">x${item.qty}</td>
+        <td style="text-align:right;font-size:11px;">Rp ${(item.price * item.qty).toLocaleString('id-ID')}</td>
+      </tr>
+    `).join('');
+
+    const cashSection = (tx.method === 'Cash' && tx.cash_paid !== undefined) ? `
+      <tr><td colspan="3" style="border-top:1px dashed #ccc;padding-top:6px;"></td></tr>
+      <tr>
+        <td colspan="2" style="font-size:11px;">Uang Dibayar</td>
+        <td style="text-align:right;font-size:11px;">Rp ${Number(tx.cash_paid).toLocaleString('id-ID')}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="font-size:11px;font-weight:bold;">Kembalian</td>
+        <td style="text-align:right;font-size:11px;font-weight:bold;">Rp ${Number(tx.change_due).toLocaleString('id-ID')}</td>
+      </tr>
+    ` : '';
+
+    const feeLine = (tx.fee_pos > 0) ? `
+      <tr>
+        <td colspan="2" style="font-size:11px;">Biaya Layanan (1%)</td>
+        <td style="text-align:right;font-size:11px;">Rp ${Number(tx.fee_pos).toLocaleString('id-ID')}</td>
+      </tr>
+    ` : '';
+
+    const brandTitle = receiptSettings?.title || 'WARUNGPOS';
+    const brandHeader = receiptSettings?.headerNote || 'Premium Digital POS System';
+    const brandFooter = receiptSettings?.footerNote || 'Terima kasih atas kunjungan Anda! Powered by WarungPOS';
+
+    const receiptHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            color: #000;
+            background: #fff;
+            width: 80mm;
+            padding: 12px 14px;
+          }
+          .center { text-align: center; }
+          .separator { border-top: 1px dashed #000; margin: 8px 0; }
+          .brand { font-size: 20px; font-weight: 900; letter-spacing: 2px; margin-bottom: 2px; }
+          .brand span { color: #6d28d9; }
+          .tagline { font-size: 10px; color: #555; margin-bottom: 6px; }
+          .status-badge {
+            display: inline-block;
+            border: 1px solid #059669;
+            color: #059669;
+            font-size: 9px;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 20px;
+            margin-bottom: 4px;
+            letter-spacing: 1px;
+          }
+          table { width: 100%; border-collapse: collapse; }
+          td { vertical-align: top; }
+          .meta-label { color: #555; font-size: 10px; }
+          .meta-val { font-size: 10px; font-weight: bold; text-align: right; }
+          .total-label { font-size: 13px; font-weight: 900; }
+          .total-val { font-size: 13px; font-weight: 900; text-align: right; color: #6d28d9; }
+          .footer { font-size: 10px; color: #555; text-align: center; margin-top: 6px; }
+          @page { size: 80mm auto; margin: 0; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="brand">${brandTitle}</div>
+          <div class="tagline">${brandHeader}</div>
+          <div class="status-badge">&#10003; PEMBAYARAN SUKSES</div>
+        </div>
+        <div class="separator"></div>
+
+        <table>
+          <tr>
+            <td class="meta-label">No. Invoice</td>
+            <td class="meta-val">${tx.invoice}</td>
+          </tr>
+          <tr>
+            <td class="meta-label">Tanggal</td>
+            <td class="meta-val">${dateStr}</td>
+          </tr>
+          <tr>
+            <td class="meta-label">Metode</td>
+            <td class="meta-val">${tx.method || 'Cash'}</td>
+          </tr>
+        </table>
+
+        <div class="separator"></div>
+        <div style="font-size:9px;font-weight:bold;letter-spacing:1px;color:#777;margin-bottom:4px;">DAFTAR ITEM</div>
+
+        <table>
+          ${itemsHtml}
+        </table>
+
+        <div class="separator"></div>
+
+        <table>
+          <tr>
+            <td colspan="2" class="meta-label">Subtotal</td>
+            <td style="text-align:right;font-size:11px;">Rp ${subtotal.toLocaleString('id-ID')}</td>
+          </tr>
+          ${feeLine}
+          <tr><td colspan="3" style="height:4px;"></td></tr>
+          <tr>
+            <td colspan="2" class="total-label">TOTAL</td>
+            <td class="total-val">Rp ${Number(tx.total).toLocaleString('id-ID')}</td>
+          </tr>
+          ${cashSection}
+        </table>
+
+        <div class="separator"></div>
+        <div class="footer">
+          <p style="font-weight:bold;">${brandFooter}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(receiptHtml);
+    iframe.contentDocument.close();
+    iframe.onload = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 1000);
+    };
+  };
+
+  const handleExportCSV = () => {
+    if (plan.toLowerCase().includes('basic')) {
+      setUpgradeModalReason('Ekspor laporan (CSV/Excel) hanya tersedia di paket Pro & Enterprise.');
+      setShowUpgradeModal(true);
+      return;
+    }
+    const headers = ['ID', 'Invoice', 'Tanggal', 'Metode Pembayaran', 'Total', 'Fee POS', 'Status'];
+    const rows = transactions.map(t => [
+      t.id,
+      t.invoice,
+      new Date(t.created_at).toLocaleString(),
+      t.method,
+      t.total,
+      t.fee_pos,
+      t.status
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `laporan_transaksi_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('success', 'Laporan berhasil diekspor ke CSV!');
+  };
+
+  const handlePrintPDFReport = () => {
+    if (plan.toLowerCase().includes('basic')) {
+      setUpgradeModalReason('Ekspor laporan (PDF) hanya tersedia di paket Pro & Enterprise.');
+      setShowUpgradeModal(true);
+      return;
+    }
+    window.print();
+  };
+
   const subtotalCart = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const feePOS = 2500;
+  const feePOS = paymentMethod === 'SmartBank (QRIS)' ? Math.round(subtotalCart * 0.01) : 0;
   const totalCart = subtotalCart > 0 ? subtotalCart + feePOS : 0;
 
   const menuItems = [
@@ -644,6 +943,7 @@ const Dashboard = ({ onBack }) => {
     { id: 'transaksi', label: 'Transaksi POS', icon: <ShoppingCart size={20} /> },
     { id: 'riwayat', label: 'Riwayat', icon: <History size={20} /> },
     { id: 'laporan', label: 'Laporan', icon: <BarChart3 size={20} /> },
+    { id: 'staf', label: 'Kelola Staf', icon: <Users size={20} /> },
     { id: 'paket', label: 'Langganan', icon: <Zap size={20} /> },
   ];
 
@@ -699,6 +999,46 @@ const Dashboard = ({ onBack }) => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
                 <input type="text" placeholder="Cari produk..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-800/50 border border-slate-700 rounded-full py-2 pl-10 pr-4 text-sm focus:border-purple-500 w-64 outline-none" />
               </div>
+            )}
+
+            {/* Branch Selector */}
+            <div className="relative">
+              {!plan.toLowerCase().includes('enterprise') ? (
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/40 border border-slate-700/50 rounded-2xl text-xs text-slate-400 font-semibold cursor-not-allowed">
+                  <span>🏢 Cabang Utama</span>
+                  <span className="text-[9px] bg-amber-500/20 border border-amber-500/30 text-amber-500 font-extrabold px-1.5 py-0.5 rounded-md">👑 ENT</span>
+                </div>
+              ) : (
+                <select 
+                  value={activeBranch} 
+                  onChange={(e) => {
+                    const selected = e.target.value;
+                    if (selected === '__add_new__') {
+                      setShowBranchSettings(true);
+                      return;
+                    }
+                    setActiveBranch(selected);
+                    localStorage.setItem('activeBranch', selected);
+                  }}
+                  className="bg-slate-800 border border-slate-700 text-white text-xs font-bold rounded-2xl px-4 py-2 focus:outline-none focus:border-purple-500 cursor-pointer shadow-md"
+                >
+                  {branches.map(b => (
+                    <option key={b} value={b}>🏢 {b}</option>
+                  ))}
+                  <option value="__add_new__">➕ Tambah Cabang...</option>
+                </select>
+              )}
+            </div>
+
+            {/* Receipt Branding Button - Enterprise Only */}
+            {plan.toLowerCase().includes('enterprise') && (
+              <button
+                onClick={() => setShowReceiptBrandingModal(true)}
+                title="Custom Branding Struk"
+                className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-bold hover:bg-amber-500/20 transition-all active:scale-95"
+              >
+                <Printer size={14} /> Branding Struk
+              </button>
             )}
 
             {/* Profile Avatar Button */}
@@ -997,16 +1337,36 @@ const Dashboard = ({ onBack }) => {
                 </div>
                 <div className="bg-[#0f1423] border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl">
                    <h3 className="font-bold mb-6">Pembayaran</h3>
-                   <div className="space-y-3">{['SmartBank (QRIS)', 'Cash'].map(m => (
-                     <label key={m} className={`flex items-center gap-4 p-5 rounded-3xl border-2 cursor-pointer transition-all ${paymentMethod === m ? 'border-purple-600 bg-purple-600/10' : 'border-slate-800'}`}>
-                       <input type="radio" className="hidden" checked={paymentMethod === m} onChange={() => {
-                         setPaymentMethod(m);
-                         setCashReceived(''); // Reset cash input when switching methods
-                       }} />
-                       <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${paymentMethod === m ? 'border-purple-600' : 'border-slate-600'}`}>{paymentMethod === m && <div className="w-3 h-3 rounded-full bg-purple-600" />}</div>
-                       <p className="font-bold text-sm">{m}</p>
-                     </label>
-                   ))}</div>
+                   <div className="space-y-3">{['SmartBank (QRIS)', 'Cash'].map(m => {
+                      const isQRIS = m === 'SmartBank (QRIS)';
+                      const isBasic = plan.toLowerCase().includes('basic');
+                      const isLocked = isQRIS && isBasic;
+                      return (
+                        <div 
+                          key={m} 
+                          onClick={() => {
+                            if (isLocked) {
+                              setUpgradeModalReason('Pembayaran QRIS otomatis (Midtrans) hanya tersedia di paket Pro & Enterprise.');
+                              setShowUpgradeModal(true);
+                              return;
+                            }
+                            setPaymentMethod(m);
+                            setCashReceived(''); // Reset cash input when switching methods
+                          }}
+                          className={`flex items-center justify-between p-5 rounded-3xl border-2 cursor-pointer transition-all ${
+                            paymentMethod === m && !isLocked ? 'border-purple-600 bg-purple-600/10' : 'border-slate-800'
+                          } ${isLocked ? 'opacity-65' : ''}`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${paymentMethod === m && !isLocked ? 'border-purple-600' : 'border-slate-600'}`}>{paymentMethod === m && !isLocked && <div className="w-3 h-3 rounded-full bg-purple-600" />}</div>
+                            <p className="font-bold text-sm">{m}</p>
+                          </div>
+                          {isLocked && (
+                            <span className="bg-purple-600/20 border border-purple-500/30 text-purple-400 text-[9px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1">🔒 PRO</span>
+                          )}
+                        </div>
+                      );
+                    })}</div>
 
                    {/* Input Cash Realtime */}
                    {paymentMethod === 'Cash' && (
@@ -1086,12 +1446,63 @@ const Dashboard = ({ onBack }) => {
           )}
 
           {activeTab === 'laporan' && (
-            <div className="animate-in fade-in space-y-6">
-               <div className="flex justify-between items-center"><h3 className="text-xl font-bold">Ringkasan Bisnis</h3></div>
-               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{[
-                  { label: 'Pendapatan', value: `Rp ${transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString()}`, icon: <Wallet className="text-emerald-400" />, trend: '+15.2%', up: true },
-                  { label: 'Transaksi', value: transactions.length.toString(), icon: <TrendingUp className="text-purple-400" />, trend: '+5.4%', up: true },
-                  { label: 'Rata-rata Order', value: `Rp ${(transactions.length > 0 ? transactions.reduce((s,t) => s + Number(t.total), 0) / transactions.length : 0).toLocaleString()}`, icon: <BarChart3 className="text-blue-400" />, trend: '-2.1%', up: false },
+            <div className="animate-in fade-in space-y-8">
+              {/* Header Laporan */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-white">Laporan & Analitik Bisnis</h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    {plan.toLowerCase().includes('basic') 
+                      ? 'Paket Basic: Laporan Harian saja' 
+                      : plan.toLowerCase().includes('pro') 
+                        ? 'Paket Pro: Laporan Harian, Mingguan & Pajak' 
+                        : 'Paket Enterprise: Analitik Real-time & Multi Cabang'}
+                  </p>
+                </div>
+                
+                {/* Export Buttons */}
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button 
+                    onClick={handleExportCSV}
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all ${
+                      plan.toLowerCase().includes('basic') 
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700/50' 
+                        : 'bg-[#0f1423] hover:bg-slate-800 text-white border border-slate-800'
+                    }`}
+                  >
+                    📥 Export CSV {plan.toLowerCase().includes('basic') && '🔒'}
+                  </button>
+                  <button 
+                    onClick={handlePrintPDFReport}
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all ${
+                      plan.toLowerCase().includes('basic') 
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700/50' 
+                        : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-600/10'
+                    }`}
+                  >
+                    📄 Cetak PDF {plan.toLowerCase().includes('basic') && '🔒'}
+                  </button>
+                </div>
+              </div>
+
+              {/* STATS CARDS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[
+                  { label: 'Pendapatan (Harian)', value: `Rp ${transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString('id-ID')}`, icon: <Wallet className="text-emerald-400" />, trend: '+15.2%', up: true },
+                  { 
+                    label: 'Pendapatan (Mingguan)', 
+                    value: plan.toLowerCase().includes('basic') ? '🔒 Upgrade Pro' : `Rp ${(transactions.reduce((s,t) => s + Number(t.total), 0) * 5.4).toLocaleString('id-ID')}`, 
+                    icon: <TrendingUp className="text-purple-400" />, 
+                    trend: plan.toLowerCase().includes('basic') ? 'Locked' : '+18.7%', 
+                    up: true 
+                  },
+                  { 
+                    label: 'Estimasi Pajak PPN (11%)', 
+                    value: plan.toLowerCase().includes('basic') ? '🔒 Upgrade Pro' : `Rp ${Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) * 0.11).toLocaleString('id-ID')}`, 
+                    icon: <BarChart3 className="text-blue-400" />, 
+                    trend: plan.toLowerCase().includes('basic') ? 'Locked' : 'Pajak', 
+                    up: false 
+                  },
                 ].map((stat, i) => (
                   <div key={i} className="bg-[#0f1423] p-5 rounded-3xl border border-slate-800 shadow-xl flex flex-col gap-3 group transition-all hover:border-purple-500/30">
                     <div className="flex items-center justify-between">
@@ -1107,7 +1518,170 @@ const Dashboard = ({ onBack }) => {
                       <h3 className="text-xl font-bold mt-0.5">{stat.value}</h3>
                     </div>
                   </div>
-                ))}</div>
+                ))}
+              </div>
+
+              {/* ADDITIONAL REPORTS SECTION FOR PRO & ENTERPRISE */}
+              {plan.toLowerCase().includes('basic') ? (
+                <div className="bg-gradient-to-br from-purple-900/10 to-slate-900 border border-purple-500/15 rounded-[2rem] p-8 text-center space-y-4">
+                  <div className="text-3xl">📊</div>
+                  <h4 className="text-lg font-bold text-white">Analitik Mingguan & Laporan Pajak Terkunci</h4>
+                  <p className="text-slate-400 text-xs max-w-md mx-auto">
+                    Upgrade ke paket Pro atau Enterprise untuk membuka laporan mingguan/bulanan, laporan pajak otomatis, analisis profit margin, serta ekspor file laporan ke CSV/Excel dan PDF.
+                  </p>
+                  <button 
+                    onClick={() => setActiveTab('paket')}
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-6 py-3 rounded-xl shadow-lg transition active:scale-95"
+                  >
+                    👑 Upgrade ke Pro / Enterprise
+                  </button>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Mingguan/Bulanan Chart Mock */}
+                  <div className="bg-[#0f1423] border border-slate-800 p-6 rounded-[2rem] shadow-xl">
+                    <h4 className="font-bold text-sm text-slate-200 mb-4">Grafik Penjualan Mingguan</h4>
+                    <div className="h-48 flex items-end gap-3 pt-6 px-4">
+                      {[40, 65, 30, 85, 50, 95, 75].map((val, idx) => (
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                          <div className="w-full bg-purple-600/20 hover:bg-purple-600 rounded-t-lg transition-all" style={{ height: `${val}%` }}></div>
+                          <span className="text-[10px] text-slate-500 font-bold">Day {idx+1}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Ringkasan Pajak & Laporan Keuangan */}
+                  <div className="bg-[#0f1423] border border-slate-800 p-6 rounded-[2rem] shadow-xl space-y-4">
+                    <h4 className="font-bold text-sm text-slate-200">Laporan Pajak & Keuangan</h4>
+                    <div className="space-y-3 text-xs text-slate-400">
+                      <div className="flex justify-between">
+                        <span>Total Penjualan Bersih:</span>
+                        <span className="text-white font-bold">
+                          Rp {Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) / 1.11).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Pajak Keluaran (PPN 11%):</span>
+                        <span className="text-white font-bold">
+                          Rp {Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) * 0.11).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Total Penjualan Kotor (PPN Inc.):</span>
+                        <span className="text-white font-bold">
+                          Rp {transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <div className="h-px bg-slate-800/80 my-2"></div>
+                      <div className="flex justify-between text-sm">
+                        <span className="font-bold text-slate-300">Total Pendapatan Pajak Terlapor:</span>
+                        <span className="text-purple-400 font-black">
+                          Rp {Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) * 0.11).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB KELOLA STAF */}
+          {activeTab === 'staf' && plan.toLowerCase().includes('basic') && (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-6 animate-in fade-in">
+              <div className="w-24 h-24 bg-purple-500/10 border border-purple-500/20 rounded-full flex items-center justify-center text-purple-400 shadow-xl">
+                <Users size={44} />
+              </div>
+              <h3 className="text-3xl font-extrabold text-white">Multi User (Kelola Staf)</h3>
+              <p className="text-slate-400 max-w-md mx-auto text-sm leading-relaxed">
+                Kelola kasir dan karyawan Anda dengan akun terpisah untuk melacak kinerja penjualan staf secara akurat. Fitur ini hanya tersedia pada paket Pro & Enterprise.
+              </p>
+              <button 
+                onClick={() => setActiveTab('paket')}
+                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-8 py-3.5 rounded-2xl font-bold shadow-lg shadow-purple-600/20 active:scale-95 transition-all text-sm"
+              >
+                👑 Upgrade ke Paket Pro/Enterprise
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'staf' && !plan.toLowerCase().includes('basic') && (
+            <div className="animate-in fade-in space-y-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold text-white">Kelola Staf & Kasir</h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    {plan.toLowerCase().includes('pro') 
+                      ? `Paket Pro: maksimal 4 staf (${staff.length}/4 staf terdaftar)` 
+                      : `Paket Enterprise: staf tak terbatas (${staff.length} staf terdaftar)`}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => {
+                    if (plan.toLowerCase().includes('pro') && staff.length >= 4) {
+                      setUpgradeModalReason('Batas staf untuk paket Pro adalah 4 staf. Upgrade ke Enterprise untuk staf tak terbatas!');
+                      setShowUpgradeModal(true);
+                      return;
+                    }
+                    setShowAddStaffModal(true);
+                  }}
+                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-2xl font-bold transition shadow-lg text-white"
+                >
+                  <Plus size={18} /> Tambah Staf
+                </button>
+              </div>
+
+              <div className="bg-[#0f1423] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-800/50 border-b border-slate-800">
+                    <tr>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Nama</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Email</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Role</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {staff.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="text-center py-10 text-slate-500 font-medium text-sm">Belum ada staf terdaftar. Klik "Tambah Staf" untuk memulai.</td>
+                      </tr>
+                    ) : (
+                      staff.map((s) => (
+                        <tr key={s.id} className="hover:bg-slate-800/20 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 overflow-hidden">
+                                {s.profile_image ? (
+                                  <img src={`http://localhost:3000/uploads/${s.profile_image}`} alt={s.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <UserCircle size={20} className="text-slate-400" />
+                                )}
+                              </div>
+                              <span className="font-bold text-white">{s.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-400">{s.email}</td>
+                          <td className="px-6 py-4">
+                            <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400">
+                              {s.role}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button 
+                              onClick={() => handleDeleteStaff(s.id)} 
+                              className="p-2 text-slate-500 hover:text-red-400 transition"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -1568,10 +2142,10 @@ const Dashboard = ({ onBack }) => {
             {/* Action Buttons (DI LUAR area invoice-print) */}
             <div className="mt-8 space-y-3 print:hidden">
               <button 
-                onClick={() => window.print()} 
+                onClick={handlePrintReceipt} 
                 className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white py-4 rounded-2xl font-bold transition shadow-lg active:scale-95 flex items-center justify-center gap-2"
               >
-                <Printer size={18} /> Cetak Invoice
+                <Printer size={18} /> Cetak Struk
               </button>
 
               <button 
@@ -1583,6 +2157,203 @@ const Dashboard = ({ onBack }) => {
               >
                 Selesai
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BRANCH SETTINGS */}
+      {showBranchSettings && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-[#0f1423] border border-slate-800 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-bold">🏢 Kelola Cabang</h3>
+                <p className="text-xs text-slate-500 mt-1">Enterprise — Cabang Unlimited</p>
+              </div>
+              <button onClick={() => { setShowBranchSettings(false); setNewBranchName(''); }} className="text-slate-500 hover:text-white transition p-2 hover:bg-slate-800 rounded-xl"><X size={20} /></button>
+            </div>
+
+            {/* List Cabang */}
+            <div className="space-y-2 mb-6 max-h-64 overflow-y-auto custom-scrollbar">
+              {branches.map((b, idx) => (
+                <div key={b} className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                  activeBranch === b
+                    ? 'bg-purple-600/10 border-purple-500/50 text-purple-300'
+                    : 'bg-slate-800/40 border-slate-700/50 text-slate-300'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <span className="text-base">🏢</span>
+                    <span className="font-semibold text-sm">{b}</span>
+                    {activeBranch === b && <span className="text-[9px] bg-purple-500/20 border border-purple-500/30 text-purple-400 font-extrabold px-2 py-0.5 rounded-md">AKTIF</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setActiveBranch(b);
+                        localStorage.setItem('activeBranch', b);
+                        showToast('success', `Beralih ke cabang: ${b}`);
+                      }}
+                      className="text-xs px-3 py-1.5 bg-slate-700 hover:bg-purple-600 text-slate-300 hover:text-white rounded-lg transition font-semibold"
+                    >
+                      Pilih
+                    </button>
+                    {idx !== 0 && (
+                      <button
+                        onClick={() => {
+                          if (!confirm(`Hapus cabang "${b}"? Data produk cabang ini tetap tersimpan.`)) return;
+                          const updated = branches.filter(x => x !== b);
+                          setBranches(updated);
+                          localStorage.setItem('branches', JSON.stringify(updated));
+                          if (activeBranch === b) {
+                            setActiveBranch('Cabang Utama');
+                            localStorage.setItem('activeBranch', 'Cabang Utama');
+                          }
+                          showToast('success', `Cabang "${b}" dihapus`);
+                        }}
+                        className="text-xs px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition font-semibold"
+                      >
+                        Hapus
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tambah Cabang Baru */}
+            <div className="border-t border-slate-800 pt-5">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Tambah Cabang Baru</p>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={newBranchName}
+                  onChange={e => setNewBranchName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (!newBranchName.trim()) return;
+                      if (branches.includes(newBranchName.trim())) { showToast('error', 'Nama cabang sudah ada!'); return; }
+                      const updated = [...branches, newBranchName.trim()];
+                      setBranches(updated);
+                      localStorage.setItem('branches', JSON.stringify(updated));
+                      setActiveBranch(newBranchName.trim());
+                      localStorage.setItem('activeBranch', newBranchName.trim());
+                      showToast('success', `Cabang "${newBranchName.trim()}" ditambahkan!`);
+                      setNewBranchName('');
+                    }
+                  }}
+                  placeholder="Nama cabang baru..."
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 transition"
+                />
+                <button
+                  onClick={() => {
+                    if (!newBranchName.trim()) return;
+                    if (branches.includes(newBranchName.trim())) { showToast('error', 'Nama cabang sudah ada!'); return; }
+                    const updated = [...branches, newBranchName.trim()];
+                    setBranches(updated);
+                    localStorage.setItem('branches', JSON.stringify(updated));
+                    setActiveBranch(newBranchName.trim());
+                    localStorage.setItem('activeBranch', newBranchName.trim());
+                    showToast('success', `Cabang "${newBranchName.trim()}" ditambahkan!`);
+                    setNewBranchName('');
+                  }}
+                  className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-sm transition active:scale-95"
+                >
+                  + Tambah
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RECEIPT BRANDING */}
+      {showReceiptBrandingModal && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-[#0f1423] border border-slate-800 w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-bold">🎨 Custom Branding Struk</h3>
+                <p className="text-xs text-slate-500 mt-1">Personalisasi tampilan struk pembayaran Anda</p>
+              </div>
+              <button onClick={() => setShowReceiptBrandingModal(false)} className="text-slate-500 hover:text-white transition p-2 hover:bg-slate-800 rounded-xl"><X size={20} /></button>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Nama Toko / Brand</label>
+                <input
+                  type="text"
+                  value={receiptSettings.title}
+                  onChange={e => setReceiptSettings(prev => ({...prev, title: e.target.value}))}
+                  placeholder="Contoh: WARUNGPOS"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm font-bold tracking-wider"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Keterangan Header</label>
+                <input
+                  type="text"
+                  value={receiptSettings.headerNote}
+                  onChange={e => setReceiptSettings(prev => ({...prev, headerNote: e.target.value}))}
+                  placeholder="Contoh: Toko Baju Murah — Jakarta Selatan"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Pesan Footer Struk</label>
+                <textarea
+                  value={receiptSettings.footerNote}
+                  onChange={e => setReceiptSettings(prev => ({...prev, footerNote: e.target.value}))}
+                  placeholder="Contoh: Terima kasih! Barang yang sudah dibeli tidak dapat ditukar."
+                  rows={3}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm resize-none"
+                />
+              </div>
+
+              {/* Preview */}
+              <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-5">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Preview Struk</p>
+                <div className="font-mono text-xs text-slate-200 space-y-1 text-center">
+                  <p className="text-base font-extrabold tracking-widest">{receiptSettings.title || 'NAMA TOKO'}</p>
+                  <p className="text-slate-400 text-[11px]">{receiptSettings.headerNote || 'Keterangan header...'}</p>
+                  <div className="border-t border-dashed border-slate-600 my-2"></div>
+                  <p className="text-[10px] text-left text-slate-400">No. Invoice: INV-XXXXXX</p>
+                  <p className="text-[10px] text-left text-slate-400">Tanggal: 07 Jun 2026</p>
+                  <div className="border-t border-dashed border-slate-600 my-2"></div>
+                  <p className="text-[10px] text-left">Produk A x1 ......... Rp 25.000</p>
+                  <p className="text-[10px] text-left">Produk B x2 ......... Rp 50.000</p>
+                  <div className="border-t border-dashed border-slate-600 my-2"></div>
+                  <p className="text-sm font-bold">TOTAL: Rp 75.000</p>
+                  <div className="border-t border-dashed border-slate-600 my-2"></div>
+                  <p className="text-[10px] text-slate-400 italic">{receiptSettings.footerNote || 'Pesan footer...'}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    localStorage.setItem('receiptSettings', JSON.stringify(receiptSettings));
+                    showToast('success', 'Branding struk berhasil disimpan!');
+                    setShowReceiptBrandingModal(false);
+                  }}
+                  className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98]"
+                >
+                  💾 Simpan Branding
+                </button>
+                <button
+                  onClick={() => {
+                    const def = { title: 'WARUNGPOS', headerNote: 'Premium Digital POS System', footerNote: 'Terima kasih atas kunjungan Anda! Powered by WarungPOS' };
+                    setReceiptSettings(def);
+                    localStorage.setItem('receiptSettings', JSON.stringify(def));
+                    showToast('success', 'Branding direset ke default');
+                  }}
+                  className="px-5 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-bold rounded-xl transition-all active:scale-[0.98]"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
           </div>
         </div>

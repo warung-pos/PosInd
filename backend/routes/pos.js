@@ -16,14 +16,14 @@ const getCoreApi = () => {
 
 // ✅ Endpoint: POST /api/pos/pay
 router.post('/pay', async (req, res) => {
-    const { items, payment_method, user_id, cash_paid, change_due } = req.body;
+    const { items, payment_method, user_id, cash_paid, change_due, branch } = req.body;
 
     if (!items || items.length === 0) {
         return res.status(400).json({ message: 'Keranjang belanja kosong' });
     }
 
     const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const fee_pos = 2500;
+    const fee_pos = Math.round(subtotal * 0.01);
     const total = subtotal + fee_pos;
     const invoice = `INV-${Date.now()}`;
 
@@ -40,8 +40,8 @@ router.post('/pay', async (req, res) => {
 
         // Simpan transaksi utama ke MySQL
         const [result] = await db.promise().query(
-            'INSERT INTO transactions (invoice, user_id, total, fee_pos, method, status, cash_paid, change_due) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [invoice, user_id || null, total, fee_pos, payment_method, paymentStatus, cash_paid || null, change_due || null]
+            'INSERT INTO transactions (invoice, user_id, total, fee_pos, method, status, cash_paid, change_due, branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [invoice, user_id || null, total, fee_pos, payment_method, paymentStatus, cash_paid || null, change_due || null, branch || 'Cabang Utama']
         );
 
         const transactionId = result.insertId;

@@ -104,6 +104,13 @@ async function migrate() {
     await addColumnIfMissing('transaction_items', 'subtotal', 'DECIMAL(15,2) NOT NULL DEFAULT 0');
     await addColumnIfMissing('transaction_items', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
 
+    // Tambah kolom admin_id ke users untuk manajemen staf kasir
+    await addColumnIfMissing('users', 'admin_id', 'INT DEFAULT NULL');
+
+    // Tambah kolom branch ke products & transactions untuk fitur multi cabang
+    await addColumnIfMissing('products', 'branch', "VARCHAR(100) DEFAULT 'Cabang Utama'");
+    await addColumnIfMissing('transactions', 'branch', "VARCHAR(100) DEFAULT 'Cabang Utama'");
+
     // Ubah item_id agar bisa NULL (produk yang dihapus tidak merusak data)
     try {
       await executeQuery('ALTER TABLE transaction_items MODIFY COLUMN item_id INT DEFAULT NULL', 'Modify item_id to nullable');
