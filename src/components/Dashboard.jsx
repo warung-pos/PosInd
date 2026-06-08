@@ -270,6 +270,57 @@ const Dashboard = ({ onBack }) => {
     localStorage.setItem('accountSettings', JSON.stringify(updated));
   };
 
+  const playCashSound = () => {
+    if (!accountSettings.kasirSound) return;
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Coin 1 clink
+      const osc1 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(1600, audioCtx.currentTime + 0.12);
+      gain1.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      osc1.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      osc1.start();
+      osc1.stop(audioCtx.currentTime + 0.12);
+      
+      // Coin 2 clink
+      setTimeout(() => {
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1200, audioCtx.currentTime);
+        osc2.frequency.exponentialRampToValueAtTime(2200, audioCtx.currentTime + 0.15);
+        gain2.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.start();
+        osc2.stop(audioCtx.currentTime + 0.15);
+      }, 70);
+      
+      // Drawer bell
+      setTimeout(() => {
+        const osc3 = audioCtx.createOscillator();
+        const gain3 = audioCtx.createGain();
+        osc3.type = 'sine';
+        osc3.frequency.setValueAtTime(987.77, audioCtx.currentTime); // B5 note
+        gain3.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain3.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        osc3.connect(gain3);
+        gain3.connect(audioCtx.destination);
+        osc3.start();
+        osc3.stop(audioCtx.currentTime + 0.4);
+      }, 140);
+    } catch (err) {
+      console.warn('Web Audio API is not supported or blocked:', err);
+    }
+  };
+
   // Fetch Latest Profile Data
   useEffect(() => {
     const cachedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -660,6 +711,7 @@ const Dashboard = ({ onBack }) => {
       if (res.ok) {
         setPaymentStatus('Selesai');
         setActiveQRTransaction(prev => ({ ...prev, status: 'Selesai' }));
+        playCashSound();
         setTimeout(() => {
           setShowQRModal(false);
           setShowInvoiceModal(true);
@@ -730,6 +782,7 @@ const Dashboard = ({ onBack }) => {
             change_due: payload.change_due
           });
           setCashReceived(''); // Reset cash input
+          playCashSound();
           setShowInvoiceModal(true);
         }
       } else {
