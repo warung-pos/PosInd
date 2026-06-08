@@ -54,11 +54,11 @@ router.post('/pay', async (req, res) => {
                 [transactionId, item.id || null, item.name, item.qty, item.price, itemSubtotal]
             );
 
-            // Jika pembayaran langsung sukses (Cash / E-Wallet), langsung potong stok
+            // Jika pembayaran langsung sukses (Cash / E-Wallet), langsung potong stok dan tambah penjualan
             if (paymentStatus === 'Selesai') {
                 await db.promise().query(
-                    'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?',
-                    [item.qty, item.id]
+                    'UPDATE products SET stock = GREATEST(0, stock - ?), sales = sales + ? WHERE id = ?',
+                    [item.qty, item.qty, item.id]
                 );
             }
         }
@@ -112,8 +112,8 @@ router.post('/simulate-success/:invoice', async (req, res) => {
             for (const item of items) {
                 if (item.item_id) {
                     await db.promise().query(
-                        'UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?',
-                        [item.qty, item.item_id]
+                        'UPDATE products SET stock = GREATEST(0, stock - ?), sales = sales + ? WHERE id = ?',
+                        [item.qty, item.qty, item.item_id]
                     );
                 }
             }

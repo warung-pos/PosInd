@@ -1,8 +1,6 @@
 import { useState } from 'react';
 
 const Hero = ({ data, onLogin }) => {
-  const [showVideo, setShowVideo] = useState(false);
-
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24 relative">
       <div className="flex flex-col lg:flex-row gap-12 items-center">
@@ -36,21 +34,10 @@ const Hero = ({ data, onLogin }) => {
               onClick={onLogin}
               className="relative z-10 bg-purple-500 hover:bg-purple-600 text-white px-8 py-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition"
             >
-              {data?.primaryButton || "Coba Demo"}
+              {data?.primaryButton || "Coba Demo Gratis"}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
               </svg>
-            </button>
-
-            {/* ✅ BUTTON VIDEO */}
-            <button
-              onClick={() => setShowVideo(true)}
-              className="relative z-10 bg-[#151b2b] hover:bg-slate-800 border border-slate-700 text-white px-8 py-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-              </svg>
-              {data?.secondaryButton || "Lihat Video"}
             </button>
 
           </div>
@@ -86,38 +73,6 @@ const Hero = ({ data, onLogin }) => {
           </div>
         </div>
       </div>
-
-      {/* ✅ MODAL VIDEO */}
-      {showVideo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          
-          <div className="bg-[#151b2b] p-6 rounded-2xl max-w-3xl w-full border border-slate-800 shadow-2xl">
-            
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-white">
-                Video Pengenalan WarungPOS
-              </h3>
-
-              <button
-                onClick={() => setShowVideo(false)}
-                className="text-slate-400 hover:text-white p-2"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="aspect-video bg-slate-800 rounded-xl flex flex-col items-center justify-center gap-4 border border-slate-700">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" className="text-slate-500">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-              </svg>
-              <span className="text-slate-400">
-                Simulasi Video Player Berjalan...
-              </span>
-            </div>
-
-          </div>
-        </div>
-      )}
     </main>
   );
 };

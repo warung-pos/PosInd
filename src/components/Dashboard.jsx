@@ -1030,8 +1030,8 @@ const Dashboard = ({ onBack }) => {
               )}
             </div>
 
-            {/* Receipt Branding Button - Enterprise Only */}
-            {plan.toLowerCase().includes('enterprise') && (
+            {/* Receipt Branding Button - Enterprise Only & Only on Dashboard Tab */}
+            {activeTab === 'dashboard' && plan.toLowerCase().includes('enterprise') && (
               <button
                 onClick={() => setShowReceiptBrandingModal(true)}
                 title="Custom Branding Struk"
@@ -1277,9 +1277,22 @@ const Dashboard = ({ onBack }) => {
                 <div className="bg-[#0f1423] border border-slate-800 p-8 rounded-[2.5rem] shadow-xl">
                   <h3 className="font-bold text-lg mb-8">Produk Terlaris</h3>
                   <div className="space-y-6">
-                    {products.sort((a,b) => b.sales - a.sales).slice(0, 4).map((p, i) => (
-                      <div key={p.id} className="flex items-center gap-4"><span className="text-slate-500 font-bold text-lg min-w-[24px]">0{i+1}</span><div className="flex-1"><p className="font-bold text-sm text-slate-200">{p.name}</p><div className="w-full bg-slate-800 h-2 rounded-full mt-2 overflow-hidden"><div className="bg-purple-500 h-full rounded-full transition-all duration-1000" style={{ width: `${(p.sales/100)*100}%` }}></div></div></div><span className="text-xs font-bold text-slate-400">{p.sales} terjual</span></div>
-                    ))}
+                    {[...products].sort((a,b) => (b.sales || 0) - (a.sales || 0)).slice(0, 4).map((p, i) => {
+                      const maxSales = Math.max(...products.map(x => x.sales || 0), 1);
+                      const barWidth = Math.min(100, Math.round(((p.sales || 0) / maxSales) * 100));
+                      return (
+                        <div key={p.id} className="flex items-center gap-4">
+                          <span className="text-slate-500 font-bold text-lg min-w-[24px]">0{i+1}</span>
+                          <div className="flex-1">
+                            <p className="font-bold text-sm text-slate-200">{p.name}</p>
+                            <div className="w-full bg-slate-800 h-2 rounded-full mt-2 overflow-hidden">
+                              <div className="bg-purple-500 h-full rounded-full transition-all duration-1000" style={{ width: `${barWidth}%` }}></div>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-slate-400">{p.sales} terjual</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -2534,6 +2547,90 @@ const Dashboard = ({ onBack }) => {
 
               <button type="submit" disabled={loading} className="w-full mt-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98]">
                 {loading ? 'Memproses...' : 'Ubah Password'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TAMBAH STAF */}
+      {showAddStaffModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="bg-[#0f1423] border border-slate-800 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-500/10 rounded-2xl flex items-center justify-center">
+                  <Users size={20} className="text-purple-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white">Tambah Staf Baru</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowAddStaffModal(false);
+                  setStaffForm({ name: '', email: '', password: '', role: 'Kasir' });
+                }} 
+                className="text-slate-500 hover:text-white transition"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStaff} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Nama Staf</label>
+                <input 
+                  type="text" 
+                  value={staffForm.name} 
+                  onChange={(e) => setStaffForm({...staffForm, name: e.target.value})}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm"
+                  placeholder="Nama Lengkap" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Email Staf</label>
+                <input 
+                  type="email" 
+                  value={staffForm.email} 
+                  onChange={(e) => setStaffForm({...staffForm, email: e.target.value})}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm"
+                  placeholder="email@example.com" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Password</label>
+                <input 
+                  type="password" 
+                  value={staffForm.password} 
+                  onChange={(e) => setStaffForm({...staffForm, password: e.target.value})}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm"
+                  placeholder="Min. 6 karakter" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Role / Jabatan</label>
+                <select 
+                  value={staffForm.role} 
+                  onChange={(e) => setStaffForm({...staffForm, role: e.target.value})}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm cursor-pointer"
+                >
+                  <option value="Kasir">Kasir</option>
+                  <option value="Manajer">Manajer</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={loading} 
+                className="w-full mt-4 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-purple-600/20 transition-all active:scale-[0.98]"
+              >
+                {loading ? 'Memproses...' : 'Tambah Staf'}
               </button>
             </form>
           </div>
