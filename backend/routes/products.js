@@ -1,11 +1,18 @@
 import express from 'express';
-const router = express.Router();
-import db from '../config/db.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
+import {
+    getProducts,
+    createProduct,
+    updateProduct,
+    deleteProduct
+} from '../controllers/productController.js';
 
-// Konfigurasi penyimpanan multer
+const router = express.Router();
+
+// Konfigurasi penyimpanan multer untuk gambar produk
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const dir = 'uploads/';
@@ -22,111 +29,12 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// 1. Ambil Semua Produk (dengan filter Cabang)
-router.get('/', async (req, res) => {
-    const { branch } = req.query;
-    try {
-        let query = 'SELECT * FROM products';
-        let params = [];
-        if (branch) {
-            query += ' WHERE branch = ?';
-            params.push(branch);
-        }
-        query += ' ORDER BY created_at DESC';
-        const [rows] = await db.promise().query(query, params);
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ message: 'Gagal mengambil data produk' });
-    }
-});
+// ✅ GET Products: Semua role bisa melihat produk (termasuk Konsumen untuk katalog)
+router.get('/', authenticateToken, authorizeRoles('Manager', 'Operator', 'Kasir', 'Konsumen'), getProducts);
 
-// 2. Tambah Produk Baru
-router.post('/', upload.single('image'), async (req, res) => {
-    const { name, price, stock, category, branch } = req.body;
-    const image = req.file ? req.file.filename : null;
-    const userId = req.headers['x-user-id'];
-
-    try {
-        // Enforce product limit for Basic plan
-        if (userId) {
-            const [userRows] = await db.promise().query('SELECT plan FROM users WHERE id = ?', [userId]);
-            if (userRows.length > 0) {
-                const userPlan = userRows[0].plan || 'basic';
-                if (userPlan.toLowerCase().includes('basic')) {
-                    const [prodCountRows] = await db.promise().query('SELECT COUNT(*) as total FROM products');
-                    if (prodCountRows[0].total >= 30) {
-                        return res.status(403).json({
-                            message: 'Batas produk untuk paket Basic adalah 30 produk. Silakan upgrade ke paket Pro atau Enterprise.'
-                        });
-                    }
-                }
-            }
-        }
-
-        const [result] = await db.promise().query(
-            'INSERT INTO products (name, price, stock, category, image, branch) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, price, stock, category || 'Minuman', image, branch || 'Cabang Utama']
-        );
-        res.status(201).json({ id: result.insertId, name, price, stock, category, image, branch: branch || 'Cabang Utama' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Gagal menambah produk' });
-    }
-});
-
-// 3. Update Produk
-router.put('/:id', upload.single('image'), async (req, res) => {
-    const { id } = req.params;
-    const { name, price, stock, category, branch } = req.body;
-    
-    try {
-        // Ambil gambar produk lama untuk dihapus jika diganti
-        const [rows] = await db.promise().query('SELECT image FROM products WHERE id = ?', [id]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: 'Produk tidak ditemukan' });
-        }
-
-        let image = rows[0].image;
-        if (req.file) {
-            if (image) {
-                const oldPath = path.join('uploads', image);
-                if (fs.existsSync(oldPath)) {
-                    fs.unlinkSync(oldPath);
-                }
-            }
-            image = req.file.filename;
-        }
-
-        await db.promise().query(
-            'UPDATE products SET name = ?, price = ?, stock = ?, category = ?, image = ?, branch = ? WHERE id = ?',
-            [name, price, stock, category || 'Minuman', image, branch || 'Cabang Utama', id]
-        );
-        res.json({ message: 'Produk berhasil diupdate', image, branch: branch || 'Cabang Utama' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Gagal update produk' });
-    }
-});
-
-// 4. Hapus Produk
-router.delete('/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        // Hapus file gambar produk dari disk jika ada
-        const [rows] = await db.promise().query('SELECT image FROM products WHERE id = ?', [id]);
-        if (rows.length > 0 && rows[0].image) {
-            const oldPath = path.join('uploads', rows[0].image);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
-            }
-        }
-
-        await db.promise().query('DELETE FROM products WHERE id = ?', [id]);
-        res.json({ message: 'Produk berhasil dihapus' });
-    } catch (err) {
-        res.status(500).json({ message: 'Gagal menghapus produk' });
-    }
-});
+// ✅ Write/Edit Products: Hanya Manager & Operator
+router.post('/', authenticateToken, authorizeRoles('Manager', 'Operator'), upload.single('image'), createProduct);
+router.put('/:id', authenticateToken, authorizeRoles('Manager', 'Operator'), upload.single('image'), updateProduct);
+router.delete('/:id', authenticateToken, authorizeRoles('Manager', 'Operator'), deleteProduct);
 
 export default router;
-
