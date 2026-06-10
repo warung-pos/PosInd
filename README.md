@@ -138,7 +138,7 @@ http://localhost:3000
 
 # 🗄️ Database Setup
 
-## 1️. Buat Database di phpMyAdmin
+## 1️⃣ Buat Database di phpMyAdmin
 
 Nama database:
 
@@ -148,12 +148,28 @@ pos_app
 
 ---
 
-## 2️. Import Database
+## 2️⃣ Import Database
 
-Import file berikut:
+Import file berikut ke dalam database `pos_app`:
 
 ```bash
 database/pos_app.sql
+```
+
+---
+
+## 3️⃣ Migrasi Tabel & Tambah Akun Testing (Wajib)
+
+Setelah file SQL di atas di-import, pastikan Anda berada di folder `backend` lalu jalankan perintah migrasi ini untuk memperbarui sistem Role (Manager, Operator, Kasir, Konsumen):
+
+```bash
+node migrate_roles.js
+```
+
+Lalu jalankan perintah ini untuk memasukkan 4 akun testing secara otomatis:
+
+```bash
+node seed_test_users.js
 ```
 
 ---
@@ -231,10 +247,10 @@ payment-gateway
 * [x] Backend Setup
 * [x] Authentication Route
 * [x] Login/Register UI
-* [ ] JWT Authentication
-* [ ] Role Management
-* [ ] Product Management
-* [ ] Transaction System
+* [x] JWT Authentication
+* [x] Role Management (Manager, Operator, Kasir, Konsumen)
+* [x] Product Management
+* [x] Transaction System (POS & Pesanan Mandiri Konsumen)
 * [ ] Payment Gateway
 * [ ] SaaS Subscription System
 * [ ] Deployment
