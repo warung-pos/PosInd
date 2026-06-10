@@ -7,10 +7,22 @@ import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import { appData } from './data/appData';
 
+// ─── Helper: Validasi sesi login masih aktif ────────────────
+const isSessionValid = () => {
+  const token = localStorage.getItem('token');
+  const user = localStorage.getItem('user');
+  if (!token || !user) return false;
+  try {
+    const parsed = JSON.parse(user);
+    return !!(parsed && parsed.id && parsed.role);
+  } catch {
+    return false;
+  }
+};
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState(() => {
-    const token = localStorage.getItem('token');
-    return token ? 'dashboard' : 'landing';
+    return isSessionValid() ? 'dashboard' : 'landing';
   });
   const [selectedPlan, setSelectedPlan] = useState(null);
 
@@ -50,8 +62,15 @@ export default function App() {
     );
   }
 
-  // 🔐 PROTEKSI DASHBOARD
+  // 🔐 PROTEKSI DASHBOARD — double check sesi masih aktif
   if (currentPage === 'dashboard') {
+    // Jika sesi sudah tidak valid (token/user dihapus atau corrupt),
+    // paksa kembali ke landing daripada render dashboard kosong
+    if (!isSessionValid()) {
+      // Reset state ke landing secara deferred agar tidak re-render saat render
+      setTimeout(() => setCurrentPage('landing'), 0);
+      return null;
+    }
     return (
       <Dashboard 
         onBack={() => {
