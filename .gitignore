@@ -91,3 +91,17 @@ coverage
 
 # Ignore generated reports
 # reports/
+
+# =========================
+# PROJECT-SPECIFIC
+# =========================
+
+# Snapshot struktur file project (tidak perlu di-commit)
+struktur.txt
+
+# Catatan dokumentasi dan pembelajaran (file lokal)
+catatan.txt
+catatan_pembelajaran.txt
+
+# Script seed/test yang bersifat lokal
+backend/seed_test_users.js
