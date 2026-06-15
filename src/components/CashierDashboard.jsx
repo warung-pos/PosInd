@@ -31,6 +31,9 @@ import {
   UserCircle,
   Menu
 } from 'lucide-react';
+import { kmpSearch } from '../utils/stringMatcher';
+import { getGreedyChange } from '../utils/greedyChange';
+import { binarySearchById } from '../utils/binarySearch';
 
 const pricingPlans = [
   {
@@ -158,7 +161,7 @@ const CashierDashboard = ({ onBack }) => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredProducts = products.filter(p => kmpSearch(p.name.toLowerCase(), searchQuery.toLowerCase()));
 
   const handleOpenModal = (product = null) => {
     if (!product && plan.toLowerCase().includes('basic') && products.length >= 30) {
@@ -166,7 +169,13 @@ const CashierDashboard = ({ onBack }) => {
       setShowUpgradeModal(true);
       return;
     }
-    setCurrentProduct(product);
+    if (product) {
+      // Gunakan Binary Search (Decrease & Conquer) untuk mencari data produk lokal
+      const foundProduct = binarySearchById(products, product.id);
+      setCurrentProduct(foundProduct || product);
+    } else {
+      setCurrentProduct(null);
+    }
     if (product) {
       setFormData({ 
         name: product.name, 
@@ -433,7 +442,9 @@ const CashierDashboard = ({ onBack }) => {
       const branchParam = isEnterprise ? `?branch=${encodeURIComponent(activeBranch)}` : '';
       const res = await fetch(`http://localhost:3000/api/products${branchParam}`);
       const data = await res.json();
-      setProducts(Array.isArray(data) ? data : []);
+      // Urutkan berdasarkan id untuk mendukung Binary Search (Decrease & Conquer)
+      const sortedData = Array.isArray(data) ? data.sort((a, b) => a.id - b.id) : [];
+      setProducts(sortedData);
     } catch (err) { 
       console.error(err); 
       setProducts([]);
@@ -700,9 +711,13 @@ const CashierDashboard = ({ onBack }) => {
 
   // --- LOGIK POS ---
   const addToCart = (product) => {
-    const existing = cart.find(item => item.id === product.id);
-    if (existing) { setCart(cart.map(i => i.id === product.id ? {...i, qty: i.qty + 1} : i)); }
-    else { setCart([...cart, { ...product, qty: 1 }]); }
+    // Gunakan Binary Search (Decrease & Conquer) untuk memvalidasi produk di list lokal yang sudah terurut
+    const validatedProduct = binarySearchById(products, product.id);
+    if (!validatedProduct) return;
+
+    const existing = cart.find(item => item.id === validatedProduct.id);
+    if (existing) { setCart(cart.map(i => i.id === validatedProduct.id ? {...i, qty: i.qty + 1} : i)); }
+    else { setCart([...cart, { ...validatedProduct, qty: 1 }]); }
   };
 
   const handleSimulateQRISSuccess = async () => {
@@ -990,7 +1005,7 @@ const CashierDashboard = ({ onBack }) => {
   };
 
   const subtotalCart = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const feePOS = paymentMethod === 'SmartBank (QRIS)' ? Math.round(subtotalCart * 0.01) : 0;
+  const feePOS = (paymentMethod === 'SmartBank (QRIS)' || paymentMethod === 'Cash') ? Math.round(subtotalCart * 0.01) : 0;
   const totalCart = subtotalCart > 0 ? subtotalCart + feePOS : 0;
 
   // ─── RBAC: Ambil menu dan hak akses dari sumber terpusat ───
@@ -1130,7 +1145,19 @@ const CashierDashboard = ({ onBack }) => {
                     placeholder="Masukkan nominal" min={processModal.total}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm" />
                   {processCash && parseFloat(processCash) >= processModal.total && (
-                    <p className="text-emerald-400 text-sm mt-2">Kembalian: Rp {(parseFloat(processCash) - processModal.total).toLocaleString()}</p>
+                    <div className="mt-2 space-y-2 text-left">
+                      <p className="text-emerald-400 text-sm font-bold">Kembalian: Rp {(parseFloat(processCash) - processModal.total).toLocaleString('id-ID')}</p>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1">Pecahan Kembalian:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {getGreedyChange(parseFloat(processCash) - processModal.total).map((c, idx) => (
+                            <span key={idx} className="bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] font-bold px-2 py-0.5 rounded-lg">
+                              Rp {c.denomination.toLocaleString('id-ID')} x{c.count}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -1620,11 +1647,29 @@ const CashierDashboard = ({ onBack }) => {
                        </div>
 
                        {cashReceived !== '' && (
-                         <div className="flex justify-between items-center p-4 bg-slate-900/50 rounded-2xl border border-slate-800/50">
-                           <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Kembalian</span>
-                           <span className={`font-mono text-base font-black ${Number(cashReceived) - totalCart < 0 ? 'text-red-500' : 'text-emerald-400'}`}>
-                             Rp {(Number(cashReceived) - totalCart).toLocaleString('id-ID')}
-                           </span>
+                         <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/50 space-y-3">
+                           <div className="flex justify-between items-center">
+                             <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Kembalian</span>
+                             <span className={`font-mono text-base font-black ${Number(cashReceived) - totalCart < 0 ? 'text-red-500' : 'text-emerald-400'}`}>
+                               Rp {(Number(cashReceived) - totalCart).toLocaleString('id-ID')}
+                             </span>
+                           </div>
+                           {Number(cashReceived) - totalCart >= 0 && (
+                             <div className="border-t border-slate-800 pt-2 text-left animate-in fade-in duration-200">
+                               <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1">Pecahan Kembalian:</span>
+                               <div className="flex flex-wrap gap-1.5">
+                                 {getGreedyChange(Number(cashReceived) - totalCart).length === 0 ? (
+                                   <span className="text-xs text-slate-500">Tidak ada kembalian</span>
+                                 ) : (
+                                   getGreedyChange(Number(cashReceived) - totalCart).map((c, idx) => (
+                                     <span key={idx} className="bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] font-bold px-2.5 py-1 rounded-xl">
+                                       Rp {c.denomination.toLocaleString('id-ID')} x{c.count}
+                                     </span>
+                                   ))
+                                 )}
+                               </div>
+                             </div>
+                           )}
                          </div>
                        )}
 

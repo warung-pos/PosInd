@@ -5,6 +5,7 @@ import {
   Search, CheckCircle2, Clock, X, UserCircle, ChevronRight, Menu,
   Package, RefreshCw
 } from 'lucide-react';
+import { kmpSearch } from '../utils/stringMatcher';
 
 const BASE = 'http://localhost:3000';
 
@@ -113,7 +114,7 @@ const ConsumerDashboard = ({ onBack }) => {
 
   const filteredProducts = products.filter(p => {
     const matchCat = selectedCategory === 'Semua' || p.category === selectedCategory;
-    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchSearch = kmpSearch(p.name.toLowerCase(), searchQuery.toLowerCase());
     return matchCat && matchSearch;
   });
 

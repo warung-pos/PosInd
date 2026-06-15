@@ -13,40 +13,52 @@ export const register = async (req, res) => {
   const allowedSelfRegisterRoles = ['Manager', 'Konsumen'];
   const role = allowedSelfRegisterRoles.includes(requestedRole) ? requestedRole : 'Manager';
 
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email dan password wajib diisi' });
+  }
+
+  const trimmedEmail = email.trim();
+
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    db.query(
-      'INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
-      [email, hashedPassword, displayName, role],
-      (err, result) => {
-        if (err) {
-          return res.status(500).json({ message: 'Email sudah digunakan' });
-        }
-
-        const userId = result.insertId;
-        const token = jwt.sign(
-          { id: userId, email: email },
-          process.env.JWT_SECRET || 'rahasia_super_aman',
-          { expiresIn: '1d' }
-        );
-
-        res.json({
-          message: 'Register berhasil',
-          token,
-          user: {
-            id: userId,
-            email: email,
-            name: displayName,
-            role: role,
-            profile_image: null,
-            plan: role === 'Konsumen' ? 'basic' : 'basic'
-          }
-        });
-      }
+    // 1. Cek apakah email sudah terdaftar terlebih dahulu
+    const [existingUsers] = await db.promise().query(
+      'SELECT id FROM users WHERE email = ?',
+      [trimmedEmail]
     );
+
+    if (existingUsers.length > 0) {
+      return res.status(400).json({ message: 'Email sudah digunakan' });
+    }
+
+    // 2. Hash password dan simpan user baru
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const [result] = await db.promise().query(
+      'INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
+      [trimmedEmail, hashedPassword, displayName, role]
+    );
+
+    const userId = result.insertId;
+    const token = jwt.sign(
+      { id: userId, email: trimmedEmail },
+      process.env.JWT_SECRET || 'rahasia_super_aman',
+      { expiresIn: '1d' }
+    );
+
+    res.json({
+      message: 'Register berhasil',
+      token,
+      user: {
+        id: userId,
+        email: trimmedEmail,
+        name: displayName,
+        role: role,
+        profile_image: null,
+        plan: 'basic'
+      }
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('Register Error:', err);
+    res.status(500).json({ message: 'Terjadi kesalahan pada server' });
   }
 };
 
