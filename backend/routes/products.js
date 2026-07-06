@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
+import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 import {
     getProducts,
     createProduct,
@@ -29,12 +29,12 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// ✅ GET Products: Semua role bisa melihat produk (termasuk Konsumen untuk katalog)
-router.get('/', authenticateToken, authorizeRoles('Manager', 'Operator', 'Kasir', 'Konsumen'), getProducts);
+// ✅ GET Products: Semua role terotentikasi bisa melihat produk
+router.get('/', authenticateToken, getProducts);
 
-// ✅ Write/Edit Products: Hanya Manager & Operator
-router.post('/', authenticateToken, authorizeRoles('Manager', 'Operator'), upload.single('image'), createProduct);
-router.put('/:id', authenticateToken, authorizeRoles('Manager', 'Operator'), upload.single('image'), updateProduct);
-router.delete('/:id', authenticateToken, authorizeRoles('Manager', 'Operator'), deleteProduct);
+// ✅ Write/Edit Products: Membutuhkan permission 'produk'
+router.post('/', authenticateToken, authorizePermissions('produk'), upload.single('image'), createProduct);
+router.put('/:id', authenticateToken, authorizePermissions('produk'), upload.single('image'), updateProduct);
+router.delete('/:id', authenticateToken, authorizePermissions('produk'), deleteProduct);
 
 export default router;

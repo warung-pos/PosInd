@@ -5,6 +5,7 @@ import path from 'path';
 import authRoutes from './routes/auth.js';
 import posRoutes from './routes/pos.js';
 import productRoutes from './routes/products.js';
+import roleRoutes from './routes/roles.js';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/pos', posRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/roles', roleRoutes);
 
 const PORT = process.env.PORT || 3000;
 

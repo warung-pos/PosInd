@@ -6,12 +6,11 @@ import fs from 'fs';
 
 // ✅ REGISTER
 export const register = async (req, res) => {
-  const { name, username, email, password, role: requestedRole } = req.body;
+  const { name, username, email, password, role: requestedRole, company_name } = req.body;
   const displayName = name || username || 'Pengguna';
 
-  // Hanya Manager dan Konsumen yang bisa self-register
-  const allowedSelfRegisterRoles = ['Manager', 'Konsumen'];
-  const role = allowedSelfRegisterRoles.includes(requestedRole) ? requestedRole : 'Manager';
+  // Jika yang mendaftar bukan Konsumen, maka otomatis jadi Admin (Owner)
+  const role = requestedRole === 'Konsumen' ? 'Konsumen' : 'Admin';
 
   if (!email || !password) {
     return res.status(400).json({ message: 'Email dan password wajib diisi' });
@@ -33,11 +32,28 @@ export const register = async (req, res) => {
     // 2. Hash password dan simpan user baru
     const hashedPassword = await bcrypt.hash(password, 10);
     const [result] = await db.promise().query(
-      'INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
-      [trimmedEmail, hashedPassword, displayName, role]
+      'INSERT INTO users (email, password, name, role, company_name) VALUES (?, ?, ?, ?, ?)',
+      [trimmedEmail, hashedPassword, displayName, role, role === 'Admin' && company_name ? company_name.trim() : null]
     );
 
     const userId = result.insertId;
+
+    // 3. Jika perannya Admin (Owner), auto-seed 3 role default (Admin, Kasir, Operator)
+    if (role === 'Admin') {
+      const defaultRoles = [
+        { name: 'Admin',    permissions: '["dashboard","produk","transaksi","pesanan","riwayat","laporan","staf","role","paket"]', is_default: 1 },
+        { name: 'Kasir',    permissions: '["dashboard","transaksi","pesanan","riwayat"]', is_default: 1 },
+        { name: 'Operator', permissions: '["dashboard","produk"]', is_default: 1 }
+      ];
+
+      for (const dr of defaultRoles) {
+        await db.promise().query(
+          'INSERT INTO roles (admin_id, name, permissions, is_default) VALUES (?, ?, ?, ?)',
+          [userId, dr.name, dr.permissions, dr.is_default]
+        );
+      }
+    }
+
     const token = jwt.sign(
       { id: userId, email: trimmedEmail },
       process.env.JWT_SECRET || 'rahasia_super_aman',
@@ -52,6 +68,7 @@ export const register = async (req, res) => {
         email: trimmedEmail,
         name: displayName,
         role: role,
+        company_name: role === 'Admin' ? (company_name ? company_name.trim() : null) : null,
         profile_image: null,
         plan: 'basic'
       }
@@ -67,7 +84,7 @@ export const login = (req, res) => {
   const { email, password } = req.body;
 
   db.query(
-    'SELECT * FROM users WHERE email = ?',
+    'SELECT u.*, admin.company_name as admin_company_name FROM users u LEFT JOIN users admin ON u.admin_id = admin.id WHERE u.email = ?',
     [email],
     async (err, results) => {
       if (err) {
@@ -91,6 +108,8 @@ export const login = (req, res) => {
         { expiresIn: '1d' }
       );
 
+      const companyName = user.admin_id ? user.admin_company_name : user.company_name;
+
       res.json({
         message: 'Login berhasil',
         token,
@@ -100,7 +119,8 @@ export const login = (req, res) => {
           name: user.name,
           role: user.role,
           profile_image: user.profile_image,
-          plan: user.plan
+          plan: user.plan,
+          company_name: companyName
         }
       });
     }
@@ -110,11 +130,26 @@ export const login = (req, res) => {
 // ✅ GET PROFILE
 export const getProfile = async (req, res) => {
   try {
-    const [rows] = await db.promise().query('SELECT id, email, name, role, profile_image, plan FROM users WHERE id = ?', [req.params.id]);
+    const [rows] = await db.promise().query(
+      'SELECT u.id, u.email, u.name, u.role, u.profile_image, u.plan, u.admin_id, u.company_name, admin.company_name as admin_company_name ' +
+      'FROM users u LEFT JOIN users admin ON u.admin_id = admin.id WHERE u.id = ?',
+      [req.params.id]
+    );
     if (rows.length === 0) {
       return res.status(404).json({ message: 'User tidak ditemukan' });
     }
-    res.json(rows[0]);
+    const user = rows[0];
+    const companyName = user.admin_id ? user.admin_company_name : user.company_name;
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      profile_image: user.profile_image,
+      plan: user.plan,
+      admin_id: user.admin_id,
+      company_name: companyName
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Gagal mengambil profile' });
@@ -152,8 +187,26 @@ export const updateProfile = async (req, res) => {
     );
 
     // Return updated user data
-    const [updatedRows] = await db.promise().query('SELECT id, email, name, role, profile_image, plan FROM users WHERE id = ?', [id]);
-    res.json({ message: 'Profile berhasil diupdate', user: updatedRows[0] });
+    const [updatedRows] = await db.promise().query(
+      'SELECT u.id, u.email, u.name, u.role, u.profile_image, u.plan, u.admin_id, u.company_name, admin.company_name as admin_company_name ' +
+      'FROM users u LEFT JOIN users admin ON u.admin_id = admin.id WHERE u.id = ?',
+      [id]
+    );
+    const updatedUser = updatedRows[0];
+    const companyName = updatedUser.admin_id ? updatedUser.admin_company_name : updatedUser.company_name;
+
+    res.json({
+      message: 'Profile berhasil diupdate',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
+        profile_image: updatedUser.profile_image,
+        plan: updatedUser.plan,
+        company_name: companyName
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Gagal update profile' });
@@ -235,10 +288,6 @@ export const createStaff = async (req, res) => {
     return res.status(400).json({ message: 'Semua kolom wajib diisi' });
   }
 
-  // Role yang boleh dibuat oleh Manager
-  const allowedStaffRoles = ['Operator', 'Kasir', 'Konsumen'];
-  const staffRole = allowedStaffRoles.includes(role) ? role : 'Kasir';
-
   try {
     // 1. Get Manager Details (specifically their plan)
     const [adminRows] = await db.promise().query('SELECT plan FROM users WHERE id = ?', [admin_id]);
@@ -261,11 +310,20 @@ export const createStaff = async (req, res) => {
       }
     }
 
-    // 3. Create staff user
+    // 3. Validasi role yang diinput ke tabel roles milik admin ini
+    const [roleRows] = await db.promise().query(
+      'SELECT id FROM roles WHERE admin_id = ? AND name = ?',
+      [admin_id, role]
+    );
+    if (roleRows.length === 0) {
+      return res.status(400).json({ message: `Role "${role}" tidak valid atau belum dibuat` });
+    }
+
+    // 4. Create staff user
     const hashedPassword = await bcrypt.hash(password, 10);
     db.query(
       'INSERT INTO users (email, password, name, role, plan, admin_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [email, hashedPassword, name, staffRole, adminPlan, admin_id],
+      [email, hashedPassword, name, role, adminPlan, admin_id],
       (err, result) => {
         if (err) {
           return res.status(500).json({ message: 'Email sudah digunakan oleh pengguna lain' });
@@ -276,7 +334,7 @@ export const createStaff = async (req, res) => {
             id: result.insertId,
             email,
             name,
-            role: staffRole,
+            role: role,
             plan: adminPlan,
             admin_id
           }

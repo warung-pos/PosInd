@@ -258,3 +258,40 @@ export const getPendingOrders = async (req, res) => {
         res.status(500).json({ message: 'Gagal mengambil pesanan masuk' });
     }
 };
+
+// 9. Konfirmasi Pembayaran QRIS Consumer (Simulasi SmartBank)
+export const confirmConsumerPayment = async (req, res) => {
+    const { invoice } = req.body;
+    if (!invoice) return res.status(400).json({ message: 'Invoice wajib diisi' });
+
+    try {
+        const [rows] = await db.promise().query('SELECT * FROM transactions WHERE invoice = ?', [invoice]);
+        if (rows.length === 0) return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
+
+        const transaction = rows[0];
+        if (transaction.status === 'Selesai') {
+            return res.json({ message: 'Transaksi sudah selesai', invoice, status: 'Selesai' });
+        }
+
+        // Tandai sebagai Selesai
+        await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
+
+        // Potong stok produk
+        const [items] = await db.promise().query(
+            'SELECT * FROM transaction_items WHERE transaction_id = ?',
+            [transaction.id]
+        );
+        for (const item of items) {
+            await db.promise().query(
+                'UPDATE products SET stock = GREATEST(0, stock - ?), sales = sales + ? WHERE id = ?',
+                [item.qty, item.qty, item.item_id]
+            );
+        }
+
+        res.json({ message: 'Pembayaran QRIS dikonfirmasi', invoice, status: 'Selesai' });
+    } catch (err) {
+        console.error('Confirm consumer payment error:', err);
+        res.status(500).json({ message: 'Gagal mengkonfirmasi pembayaran' });
+    }
+};
+

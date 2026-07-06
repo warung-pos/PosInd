@@ -4,10 +4,16 @@ const Register = ({ onSuccess, onBack }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
 
   const handleRegister = async () => {
     setError('');
+
+    if (!companyName.trim()) {
+      setError('Nama Usaha wajib diisi');
+      return;
+    }
 
     try {
       const res = await fetch('http://localhost:3000/api/auth/register', {
@@ -18,7 +24,8 @@ const Register = ({ onSuccess, onBack }) => {
         body: JSON.stringify({
           name,
           email,
-          password
+          password,
+          company_name: companyName
         })
       });
 
@@ -65,10 +72,19 @@ const Register = ({ onSuccess, onBack }) => {
           </div>
         )}
 
+        {/* INPUT NAMA USAHA (COMPANY NAME) */}
+        <input
+          type="text"
+          placeholder="Nama Usaha (misal: Kopi Makmur Jaya)"
+          className="w-full mb-4 p-3 rounded-lg bg-slate-800 border border-slate-700"
+          value={companyName}
+          onChange={(e) => setCompanyName(e.target.value)}
+        />
+
         {/* INPUT NAME */}
         <input
           type="text"
-          placeholder="Nama"
+          placeholder="Nama Pengguna"
           className="w-full mb-4 p-3 rounded-lg bg-slate-800 border border-slate-700"
           value={name}
           onChange={(e) => setName(e.target.value)}

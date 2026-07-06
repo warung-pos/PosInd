@@ -12,6 +12,7 @@ const Login = ({ onSuccess, onBack }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -22,6 +23,7 @@ const Login = ({ onSuccess, onBack }) => {
     setError('');
     if (!email || !password) { setError('Email dan password wajib diisi'); return; }
     if (!isLogin && !name) { setError('Nama wajib diisi'); return; }
+    if (mode === 'register' && !companyName.trim()) { setError('Nama usaha wajib diisi'); return; }
 
     setLoading(true);
     const url = isLogin
@@ -31,7 +33,7 @@ const Login = ({ onSuccess, onBack }) => {
     try {
       const body = isLogin
         ? { email, password }
-        : { name, email, password, role: isKonsumen ? 'Konsumen' : 'Manager' };
+        : { name, email, password, role: isKonsumen ? 'Konsumen' : 'Manager', company_name: isKonsumen ? null : companyName };
 
       const res = await fetch(url, {
         method: 'POST',
@@ -56,7 +58,7 @@ const Login = ({ onSuccess, onBack }) => {
     setLoading(false);
   };
 
-  const switchMode = (newMode) => { setMode(newMode); setError(''); setName(''); setEmail(''); setPassword(''); };
+  const switchMode = (newMode) => { setMode(newMode); setError(''); setName(''); setEmail(''); setPassword(''); setCompanyName(''); };
 
   const titles = {
     login: 'Masuk ke WarungPOS',
@@ -129,11 +131,21 @@ const Login = ({ onSuccess, onBack }) => {
             </div>
           )}
 
+          {/* INPUT NAMA USAHA (Hanya untuk register Pemilik) */}
+          {mode === 'register' && (
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Nama Usaha / Warung</label>
+              <input type="text" placeholder="misal: Kopi Makmur Jaya"
+                className="w-full p-3 rounded-xl bg-slate-900 border border-slate-800 focus:outline-none focus:border-purple-500 transition text-sm"
+                value={companyName} onChange={e => setCompanyName(e.target.value)} />
+            </div>
+          )}
+
           {/* INPUT NAMA */}
           {!isLogin && (
             <div className="mb-4">
               <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Nama Lengkap</label>
-              <input type="text" placeholder={isKonsumen ? 'Nama kamu' : 'Nama pemilik / warung'}
+              <input type="text" placeholder={isKonsumen ? 'Nama kamu' : 'Nama pemilik'}
                 className="w-full p-3 rounded-xl bg-slate-900 border border-slate-800 focus:outline-none focus:border-purple-500 transition text-sm"
                 value={name} onChange={e => setName(e.target.value)} />
             </div>

@@ -22,11 +22,13 @@ import {
   Zap,
   Store,
   ClipboardList,
+  ShieldCheck,
 } from 'lucide-react';
 import React from 'react';
 
 // ─── Konstanta Nama Role ────────────────────────────────────
 export const ROLES = {
+  ADMIN:    'Admin',
   MANAGER:  'Manager',
   OPERATOR: 'Operator',
   KASIR:    'Kasir',
@@ -34,7 +36,7 @@ export const ROLES = {
 };
 
 // ─── Definisi Semua Menu yang Ada ──────────────────────────
-const ALL_MENU_ITEMS = [
+export const ALL_MENU_ITEMS = [
   { id: 'dashboard',  label: 'Dashboard',       icon: React.createElement(LayoutDashboard, { size: 20 }) },
   { id: 'produk',     label: 'Produk',           icon: React.createElement(Package,         { size: 20 }) },
   { id: 'transaksi',  label: 'Transaksi POS',    icon: React.createElement(ShoppingCart,    { size: 20 }) },
@@ -42,45 +44,78 @@ const ALL_MENU_ITEMS = [
   { id: 'riwayat',    label: 'Riwayat',          icon: React.createElement(History,         { size: 20 }) },
   { id: 'laporan',    label: 'Laporan',           icon: React.createElement(BarChart3,       { size: 20 }) },
   { id: 'staf',       label: 'Kelola Staf',      icon: React.createElement(Users,           { size: 20 }) },
+  { id: 'role',       label: 'Kelola Role',      icon: React.createElement(ShieldCheck,     { size: 20 }) },
   { id: 'paket',      label: 'Langganan',         icon: React.createElement(Zap,            { size: 20 }) },
   { id: 'katalog',    label: 'Katalog Produk',   icon: React.createElement(Store,           { size: 20 }) },
   { id: 'mypesanan',  label: 'Pesanan Saya',     icon: React.createElement(ClipboardList,   { size: 20 }) },
 ];
 
-// ─── Mapping Role → Daftar Tab yang Diizinkan ──────────────
+// ─── Mapping Role → Daftar Tab yang Diizinkan (Default Fallback) ──────────────
 export const ROLE_PERMISSIONS = {
-  [ROLES.MANAGER]: [
+  Admin: [
+    'dashboard',
+    'produk',
+    'transaksi',
+    'pesanan',
+    'riwayat',
+    'laporan',
+    'staf',
+    'role',
+    'paket',
+  ],
+  Manager: [
     'dashboard',
     'laporan',
     'staf',
     'paket',
   ],
-  [ROLES.OPERATOR]: [
+  Operator: [
     'dashboard',
     'produk',
   ],
-  [ROLES.KASIR]: [
+  Kasir: [
     'dashboard',
     'transaksi',
     'pesanan',
     'riwayat',
   ],
-  [ROLES.KONSUMEN]: [
+  Konsumen: [
     'katalog',
     'mypesanan',
   ],
 };
 
+// Variabel module-level untuk menyimpan data role dinamis dari database
+let dynamicRolePermissions = { ...ROLE_PERMISSIONS };
+
+// Fungsi untuk menyetel data role dinamis dari database
+export const setDynamicPermissions = (data) => {
+  if (Array.isArray(data)) {
+    const mapping = {};
+    data.forEach(r => {
+      mapping[r.name] = r.permissions;
+    });
+    dynamicRolePermissions = mapping;
+  } else if (data) {
+    dynamicRolePermissions = data;
+  }
+};
+
+// Fungsi untuk mengambil data permissions dinamis yang aktif saat ini
+export const getDynamicPermissions = () => {
+  return dynamicRolePermissions;
+};
+
 // ─── Helper: Cek apakah role memiliki akses ke tab ─────────
 export const canAccess = (role, tabId) => {
-  const allowed = ROLE_PERMISSIONS[role];
+  const allowed = dynamicRolePermissions[role] || ROLE_PERMISSIONS[role];
   if (!allowed) return false;
   return allowed.includes(tabId);
 };
 
 // ─── Helper: Dapatkan daftar menu item untuk role tertentu ──
 export const getMenuItems = (role) => {
-  const allowed = ROLE_PERMISSIONS[role] || [];
+  const allowed = dynamicRolePermissions[role] || ROLE_PERMISSIONS[role] || [];
   return allowed
     .map(tabId => ALL_MENU_ITEMS.find(item => item.id === tabId))
     .filter(Boolean);
@@ -88,7 +123,7 @@ export const getMenuItems = (role) => {
 
 // ─── Helper: Tab default saat pertama kali login ────────────
 export const getDefaultTab = (role) => {
-  const allowed = ROLE_PERMISSIONS[role];
+  const allowed = dynamicRolePermissions[role] || ROLE_PERMISSIONS[role];
   if (!allowed || allowed.length === 0) return 'dashboard';
   return allowed[0];
 };

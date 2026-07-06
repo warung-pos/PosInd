@@ -42,20 +42,16 @@ CREATE TABLE IF NOT EXISTS transaction_items (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
 
-// Tambah kolom cash_paid & change_due ke transactions jika belum ada
-const addCashColumns = `
-  ALTER TABLE transactions
-    ADD COLUMN cash_paid DECIMAL(15,2) DEFAULT NULL,
-    ADD COLUMN change_due DECIMAL(15,2) DEFAULT NULL
-`;
-
-// Tambah kolom product_name & subtotal ke transaction_items jika belum ada
-const addItemSnapshotColumns = `
-  ALTER TABLE transaction_items
-    MODIFY COLUMN item_id INT DEFAULT NULL,
-    ADD COLUMN product_name VARCHAR(255) NOT NULL DEFAULT '',
-    ADD COLUMN subtotal DECIMAL(15,2) NOT NULL DEFAULT 0,
-    ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+const createRolesTable = `
+CREATE TABLE IF NOT EXISTS roles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  admin_id INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  permissions TEXT NOT NULL,
+  is_default TINYINT(1) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_admin_role (admin_id, name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
 
 // Helper: cek apakah kolom ada, jika tidak tambahkan
@@ -94,6 +90,7 @@ async function migrate() {
     await executeQuery(createProductsTable, 'Create products table');
     await executeQuery(createTransactionsTable, 'Create transactions table');
     await executeQuery(createTransactionItemsTable, 'Create transaction_items table');
+    await executeQuery(createRolesTable, 'Create roles table');
 
     // Tambah kolom cash_paid & change_due ke transactions jika belum ada
     await addColumnIfMissing('transactions', 'cash_paid', 'DECIMAL(15,2) DEFAULT NULL');
@@ -106,6 +103,9 @@ async function migrate() {
 
     // Tambah kolom admin_id ke users untuk manajemen staf kasir
     await addColumnIfMissing('users', 'admin_id', 'INT DEFAULT NULL');
+
+    // Tambah kolom company_name ke users untuk manajemen nama usaha
+    await addColumnIfMissing('users', 'company_name', 'VARCHAR(255) DEFAULT NULL');
 
     // Tambah kolom branch ke products & transactions untuk fitur multi cabang
     await addColumnIfMissing('products', 'branch', "VARCHAR(100) DEFAULT 'Cabang Utama'");

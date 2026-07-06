@@ -1,16 +1,43 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch as fetch } from '../utils/api';
 import {
   Store, ShoppingCart, ClipboardList, LogOut, Plus, Minus, Trash2,
   Search, CheckCircle2, Clock, X, UserCircle, ChevronRight, Menu,
-  Package, RefreshCw
+  Package, RefreshCw, QrCode, Smartphone, Wallet, Loader2
 } from 'lucide-react';
 import { kmpSearch } from '../utils/stringMatcher';
 
 const BASE = 'http://localhost:3000';
 
+// ── Simulasi QR Code SVG sederhana (bukan QR asli, hanya demo visual) ──
+const FakeQRCode = ({ invoice }) => (
+  <svg viewBox="0 0 100 100" className="w-40 h-40" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="white" rx="4" />
+    {/* Pola QR simulasi */}
+    {[0,1,2,3,4,5,6].map(r => [0,1,2,3,4,5,6].map(c => {
+      const isFinderCorner =
+        (r < 7 && c < 7) || (r < 7 && c > 6) || (r > 6 && c < 7);
+      const isFill = Math.abs((r * 13 + c * 7 + invoice.charCodeAt(0)) % 3) !== 0;
+      return isFill ? (
+        <rect key={`${r}-${c}`} x={10 + c * 11} y={10 + r * 11} width={10} height={10} fill="#1a1a2e" rx="1" />
+      ) : null;
+    }))}
+    {/* Finder pattern corners */}
+    <rect x="10" y="10" width="28" height="28" fill="none" stroke="#1a1a2e" strokeWidth="3" rx="2" />
+    <rect x="15" y="15" width="16" height="16" fill="#1a1a2e" rx="1" />
+    <rect x="62" y="10" width="28" height="28" fill="none" stroke="#1a1a2e" strokeWidth="3" rx="2" />
+    <rect x="67" y="15" width="16" height="16" fill="#1a1a2e" rx="1" />
+    <rect x="10" y="62" width="28" height="28" fill="none" stroke="#1a1a2e" strokeWidth="3" rx="2" />
+    <rect x="15" y="67" width="16" height="16" fill="#1a1a2e" rx="1" />
+    <text x="50" y="97" textAnchor="middle" fontSize="5" fill="#666">{invoice?.slice(-8)}</text>
+  </svg>
+);
+
 const ConsumerDashboard = ({ onBack }) => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const plan = user.plan || '';
+  const canUseQRIS = plan.toLowerCase().includes('pro') || plan.toLowerCase().includes('enterprise');
+
   const [activeTab, setActiveTab] = useState('katalog');
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [products, setProducts] = useState([]);
@@ -19,9 +46,22 @@ const ConsumerDashboard = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('kasir'); // 'kasir' | 'qris'
   const [myOrders, setMyOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  // State untuk flow QR
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrInvoice, setQrInvoice] = useState(null);
+  const [qrTotal, setQrTotal] = useState(0);
+  const [qrStatus, setQrStatus] = useState('waiting'); // 'waiting' | 'confirming' | 'success'
+  const [qrCountdown, setQrCountdown] = useState(120);
+  const countdownRef = useRef(null);
+
+  // State untuk sukses order mandiri
   const [checkoutDone, setCheckoutDone] = useState(null);
+
   const [toasts, setToasts] = useState([]);
 
   const showToast = (type, msg) => {
@@ -58,6 +98,23 @@ const ConsumerDashboard = ({ onBack }) => {
     if (activeTab === 'mypesanan') fetchMyOrders();
   }, [activeTab]);
 
+  // Countdown QR
+  useEffect(() => {
+    if (showQRModal && qrStatus === 'waiting') {
+      countdownRef.current = setInterval(() => {
+        setQrCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current);
+            setQrStatus('expired');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(countdownRef.current);
+  }, [showQRModal, qrStatus]);
+
   // Cart helpers
   const addToCart = (product) => {
     if (product.stock <= 0) { showToast('error', 'Stok produk habis'); return; }
@@ -81,9 +138,10 @@ const ConsumerDashboard = ({ onBack }) => {
   const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
-  // Checkout
-  const handleCheckout = async () => {
+  // ── Checkout: Bayar di Kasir ──
+  const handleCheckoutKasir = async () => {
     if (cart.length === 0) { showToast('error', 'Keranjang masih kosong'); return; }
+    setCheckoutLoading(true);
     try {
       const res = await fetch(`${BASE}/api/pos/pay`, {
         method: 'POST',
@@ -96,7 +154,7 @@ const ConsumerDashboard = ({ onBack }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        setCheckoutDone(data);
+        setCheckoutDone({ ...data, paymentType: 'kasir' });
         setCart([]);
         setShowCart(false);
         showToast('success', 'Pesanan berhasil dikirim! Menunggu kasir memproses.');
@@ -104,6 +162,66 @@ const ConsumerDashboard = ({ onBack }) => {
         showToast('error', data.message || 'Checkout gagal');
       }
     } catch { showToast('error', 'Koneksi gagal'); }
+    setCheckoutLoading(false);
+  };
+
+  // ── Checkout: SmartBank QRIS ──
+  const handleCheckoutQRIS = async () => {
+    if (cart.length === 0) { showToast('error', 'Keranjang masih kosong'); return; }
+    setCheckoutLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/pos/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cart.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+          payment_method: 'SmartBank (QRIS)',
+          user_id: user.id,
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setQrInvoice(data.invoice);
+        setQrTotal(data.total || cartTotal);
+        setQrStatus('waiting');
+        setQrCountdown(120);
+        setShowCart(false);
+        setShowQRModal(true);
+      } else {
+        showToast('error', data.message || 'Gagal membuat pesanan QRIS');
+      }
+    } catch { showToast('error', 'Koneksi gagal'); }
+    setCheckoutLoading(false);
+  };
+
+  const handleCheckout = () => {
+    if (paymentMethod === 'qris') {
+      handleCheckoutQRIS();
+    } else {
+      handleCheckoutKasir();
+    }
+  };
+
+  // ── Konfirmasi bayar QRIS (simulasi) ──
+  const handleConfirmQRPayment = async () => {
+    setQrStatus('confirming');
+    clearInterval(countdownRef.current);
+    // Simulasi delay konfirmasi
+    await new Promise(r => setTimeout(r, 1500));
+    // Update status transaksi ke Selesai
+    try {
+      await fetch(`${BASE}/api/pos/confirm-consumer`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice: qrInvoice })
+      });
+    } catch (e) { /* ignore if endpoint not ready */ }
+    setQrStatus('success');
+    setTimeout(() => {
+      setShowQRModal(false);
+      setCheckoutDone({ invoice: qrInvoice, total: qrTotal, paymentType: 'qris' });
+      setCart([]);
+    }, 1800);
   };
 
   const logout = () => {
@@ -311,10 +429,11 @@ const ConsumerDashboard = ({ onBack }) => {
                         <div>
                           <span className="font-bold text-purple-400">{order.invoice}</span>
                           <p className="text-xs text-slate-500 mt-1">{new Date(order.created_at).toLocaleString('id-ID')}</p>
+                          <p className="text-[11px] text-slate-600 mt-0.5">via {order.method}</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${order.status === 'Selesai' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
-                            {order.status === 'Selesai' ? '✓ Selesai' : '⏳ Menunggu Kasir'}
+                            {order.status === 'Selesai' ? '✓ Selesai' : '⏳ Menunggu'}
                           </span>
                           <span className="font-bold">Rp {Number(order.total).toLocaleString()}</span>
                         </div>
@@ -336,7 +455,7 @@ const ConsumerDashboard = ({ onBack }) => {
         </div>
       </div>
 
-      {/* DRAWER KERANJANG */}
+      {/* ─── DRAWER KERANJANG ─── */}
       {showCart && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCart(false)} />
@@ -392,10 +511,66 @@ const ConsumerDashboard = ({ onBack }) => {
                   <span>Total</span>
                   <span className="text-purple-400">Rp {cartTotal.toLocaleString()}</span>
                 </div>
-                <p className="text-slate-500 text-xs text-center">Pesananmu akan diproses oleh kasir toko</p>
-                <button onClick={handleCheckout}
-                  className="w-full py-4 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-bold rounded-2xl text-lg transition shadow-lg shadow-purple-600/20">
-                  Pesan Sekarang ✓
+
+                {/* ── Pilihan Metode Bayar ── */}
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Metode Pembayaran</p>
+
+                  {/* Bayar di Kasir */}
+                  <button
+                    onClick={() => setPaymentMethod('kasir')}
+                    className={`w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all ${paymentMethod === 'kasir' ? 'border-purple-500 bg-purple-500/10' : 'border-slate-700 hover:border-slate-600 bg-slate-800/40'}`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${paymentMethod === 'kasir' ? 'bg-purple-600' : 'bg-slate-700'}`}>
+                      <Wallet size={15} className="text-white" />
+                    </div>
+                    <div className="text-left flex-1">
+                      <p className={`text-sm font-bold ${paymentMethod === 'kasir' ? 'text-white' : 'text-slate-300'}`}>Bayar di Kasir</p>
+                      <p className="text-[11px] text-slate-500">Pesanan dikirim, bayar langsung ke kasir</p>
+                    </div>
+                    <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${paymentMethod === 'kasir' ? 'border-purple-500 bg-purple-500' : 'border-slate-600'}`} />
+                  </button>
+
+                  {/* SmartBank QRIS */}
+                  <div className="relative">
+                    <button
+                      onClick={() => canUseQRIS && setPaymentMethod('qris')}
+                      disabled={!canUseQRIS}
+                      className={`w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all ${!canUseQRIS ? 'border-slate-800 opacity-50 cursor-not-allowed bg-slate-800/20' : paymentMethod === 'qris' ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 hover:border-slate-600 bg-slate-800/40'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${paymentMethod === 'qris' ? 'bg-emerald-600' : 'bg-slate-700'}`}>
+                        <QrCode size={15} className="text-white" />
+                      </div>
+                      <div className="text-left flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className={`text-sm font-bold ${paymentMethod === 'qris' ? 'text-white' : 'text-slate-300'}`}>SmartBank (QRIS)</p>
+                          {!canUseQRIS && (
+                            <span className="text-[9px] font-extrabold bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded uppercase">Pro+</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500">Scan QR, bayar langsung di tempat</p>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${paymentMethod === 'qris' ? 'border-emerald-500 bg-emerald-500' : 'border-slate-600'}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleCheckout}
+                  disabled={checkoutLoading}
+                  className={`w-full py-4 font-bold rounded-2xl text-lg transition shadow-lg active:scale-[0.98] disabled:opacity-70 flex items-center justify-center gap-2 ${
+                    paymentMethod === 'qris'
+                      ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white shadow-emerald-600/20'
+                      : 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white shadow-purple-600/20'
+                  }`}
+                >
+                  {checkoutLoading ? (
+                    <><Loader2 size={18} className="animate-spin" /> Memproses...</>
+                  ) : paymentMethod === 'qris' ? (
+                    <><QrCode size={18} /> Tampilkan QR Code</>
+                  ) : (
+                    <>✓ Pesan Sekarang</>
+                  )}
                 </button>
               </div>
             )}
@@ -403,28 +578,149 @@ const ConsumerDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* MODAL PESANAN BERHASIL */}
+      {/* ─── MODAL QR SMARTBANK ─── */}
+      {showQRModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="bg-[#0f1423] border border-slate-800 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 fade-in overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-5 text-center relative">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Smartphone size={18} className="text-white" />
+                <span className="font-extrabold text-white text-sm tracking-wide uppercase">SmartBank QRIS</span>
+              </div>
+              <p className="text-emerald-100 text-xs">Scan QR di bawah untuk membayar</p>
+              {qrStatus === 'waiting' && (
+                <button onClick={() => { setShowQRModal(false); clearInterval(countdownRef.current); }} className="absolute top-4 right-4 text-white/60 hover:text-white">
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="p-6 text-center space-y-4">
+              {qrStatus === 'waiting' && (
+                <>
+                  {/* QR Code area */}
+                  <div className="flex items-center justify-center">
+                    <div className="bg-white p-4 rounded-2xl shadow-lg border-4 border-emerald-500/30">
+                      <FakeQRCode invoice={qrInvoice || 'INV-000'} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 text-xs mb-1">Invoice</p>
+                    <p className="font-mono font-bold text-purple-400 text-sm">{qrInvoice}</p>
+                  </div>
+                  <div className="bg-slate-800/60 rounded-2xl p-4">
+                    <p className="text-slate-400 text-xs mb-1">Total Pembayaran</p>
+                    <p className="text-2xl font-extrabold text-white">Rp {Number(qrTotal).toLocaleString()}</p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 text-amber-400 text-sm">
+                    <Clock size={14} />
+                    <span className="font-bold">{Math.floor(qrCountdown / 60)}:{String(qrCountdown % 60).padStart(2, '0')}</span>
+                    <span className="text-slate-500 text-xs">sisa waktu</span>
+                  </div>
+                  {/* Tombol simulasi konfirmasi */}
+                  <button
+                    onClick={handleConfirmQRPayment}
+                    className="w-full py-4 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold rounded-2xl transition active:scale-[0.98] shadow-lg shadow-emerald-600/20"
+                  >
+                    ✅ Konfirmasi Bayar (Simulasi)
+                  </button>
+                  <p className="text-slate-600 text-[11px]">Tekan tombol di atas setelah scan & bayar QR</p>
+                </>
+              )}
+
+              {qrStatus === 'confirming' && (
+                <div className="py-8 space-y-4">
+                  <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto animate-pulse">
+                    <Loader2 size={32} className="text-emerald-400 animate-spin" />
+                  </div>
+                  <p className="font-bold text-white">Memverifikasi Pembayaran...</p>
+                  <p className="text-slate-400 text-sm">Tunggu sebentar</p>
+                </div>
+              )}
+
+              {qrStatus === 'success' && (
+                <div className="py-8 space-y-4">
+                  <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle2 size={40} className="text-emerald-400" />
+                  </div>
+                  <p className="text-xl font-extrabold text-white">Pembayaran Berhasil!</p>
+                  <p className="text-slate-400 text-sm">Menampilkan detail pesanan...</p>
+                </div>
+              )}
+
+              {qrStatus === 'expired' && (
+                <div className="py-6 space-y-4">
+                  <div className="text-5xl">⏰</div>
+                  <p className="font-bold text-red-400">QR Kode Kedaluwarsa</p>
+                  <p className="text-slate-400 text-sm">Silakan ulangi pesanan Anda</p>
+                  <button onClick={() => setShowQRModal(false)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-sm transition">
+                    Tutup
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL PESANAN BERHASIL ─── */}
       {checkoutDone && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-[#0f1423] border border-slate-700 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl animate-in fade-in zoom-in-95">
-            <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
-              <CheckCircle2 size={40} className="text-emerald-400" />
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 ${checkoutDone.paymentType === 'qris' ? 'bg-emerald-500/10' : 'bg-purple-500/10'}`}>
+              <CheckCircle2 size={40} className={checkoutDone.paymentType === 'qris' ? 'text-emerald-400' : 'text-purple-400'} />
             </div>
-            <h3 className="text-2xl font-bold mb-2">Pesanan Dikirim!</h3>
-            <p className="text-slate-400 text-sm mb-2">Invoice: <span className="text-purple-400 font-bold">{checkoutDone.invoice}</span></p>
-            <p className="text-slate-400 text-sm mb-6">Total: <span className="font-bold text-white">Rp {Number(checkoutDone.total).toLocaleString()}</span></p>
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 mb-6 text-left">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock size={16} className="text-amber-400" />
-                <span className="text-amber-400 font-bold text-sm">Menunggu Kasir</span>
+
+            {checkoutDone.paymentType === 'qris' ? (
+              <>
+                <h3 className="text-2xl font-bold mb-1">Pembayaran Sukses! 🎉</h3>
+                <p className="text-emerald-400 text-sm font-semibold mb-4">SmartBank (QRIS) terkonfirmasi</p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-2xl font-bold mb-1">Pesanan Dikirim!</h3>
+                <p className="text-slate-400 text-sm mb-4">Bayar langsung ke kasir</p>
+              </>
+            )}
+
+            <div className="bg-slate-800/50 rounded-2xl p-4 mb-5 text-left space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Invoice</span>
+                <span className="font-mono font-bold text-purple-400">{checkoutDone.invoice}</span>
               </div>
-              <p className="text-slate-400 text-xs">Pesananmu sedang menunggu diproses oleh kasir. Cek status di tab "Pesanan Saya".</p>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Total</span>
+                <span className="font-bold text-white">Rp {Number(checkoutDone.total).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Metode</span>
+                <span className="font-bold text-white">{checkoutDone.paymentType === 'qris' ? '📱 SmartBank (QRIS)' : '💵 Bayar di Kasir'}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Status</span>
+                <span className={`font-bold ${checkoutDone.paymentType === 'qris' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {checkoutDone.paymentType === 'qris' ? '✓ Lunas' : '⏳ Menunggu Kasir'}
+                </span>
+              </div>
             </div>
+
+            {checkoutDone.paymentType === 'kasir' && (
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-3 mb-5 text-left">
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock size={14} className="text-amber-400" />
+                  <span className="text-amber-400 font-bold text-xs">Instruksi</span>
+                </div>
+                <p className="text-slate-400 text-xs">Tunjukkan nomor invoice ke kasir untuk menyelesaikan pembayaran Anda.</p>
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button onClick={() => { setCheckoutDone(null); setActiveTab('mypesanan'); }}
                 className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold transition">Lihat Pesanan</button>
               <button onClick={() => setCheckoutDone(null)}
-                className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-bold transition">Lanjut Belanja</button>
+                className={`flex-1 py-3 text-white rounded-xl text-sm font-bold transition ${checkoutDone.paymentType === 'qris' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-purple-600 hover:bg-purple-700'}`}>Lanjut Belanja</button>
             </div>
           </div>
         </div>

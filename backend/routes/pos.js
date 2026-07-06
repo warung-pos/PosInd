@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
+import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 import {
     payTransaction,
     checkTransactionStatus,
@@ -9,6 +9,7 @@ import {
     processConsumerOrder,
     getMyOrders,
     getPendingOrders,
+    confirmConsumerPayment,
 } from '../controllers/posController.js';
 
 const router = express.Router();
@@ -25,9 +26,10 @@ router.get('/transactions/:id', getTransactionDetail);
 
 // ✅ Rute Konsumen
 router.get('/my-orders', getMyOrders);
+router.put('/confirm-consumer', confirmConsumerPayment);
 
-// ✅ Rute Kasir — Kelola Pesanan Masuk dari Konsumen
-router.get('/pending-orders', authorizeRoles('Kasir', 'Manager'), getPendingOrders);
-router.post('/process/:invoice', authorizeRoles('Kasir', 'Manager'), processConsumerOrder);
+// ✅ Rute Kasir — Kelola Pesanan Masuk dari Konsumen (Membutuhkan permission 'pesanan' atau 'transaksi')
+router.get('/pending-orders', authorizePermissions('pesanan', 'transaksi'), getPendingOrders);
+router.post('/process/:invoice', authorizePermissions('pesanan', 'transaksi'), processConsumerOrder);
 
 export default router;

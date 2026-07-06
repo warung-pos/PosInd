@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch as fetch } from '../utils/api';
-import { getMenuItems, canAccess, getDefaultTab, ROLES } from '../rbac/permissions';
+import { getMenuItems, canAccess, getDefaultTab, ROLES, ALL_MENU_ITEMS, setDynamicPermissions } from '../rbac/permissions';
 import Unauthorized from './Unauthorized';
 import { 
   LayoutDashboard, 
@@ -44,17 +44,16 @@ const pricingPlans = [
     color: 'from-slate-500 to-slate-600',
     icon: '🛒',
     features: [
-      { text: 'Hingga 30 produk', included: true },
-      { text: '1 akun pengguna', included: true },
-      { text: 'Transaksi POS dasar', included: true },
-      { text: 'Laporan harian', included: true },
-      { text: 'Cetak struk (thermal)', included: true },
-      { text: 'Pembayaran Cash', included: true },
-      { text: 'Pembayaran QRIS', included: false },
-      { text: 'Laporan pajak & keuangan', included: false },
+      { text: 'Kelola produk (maks. 30 item)', included: true },
+      { text: 'Transaksi POS — Pembayaran Cash', included: true },
+      { text: 'Cetak struk thermal', included: true },
+      { text: 'Laporan transaksi harian', included: true },
+      { text: 'Tambah staf (Kasir & Operator)', included: false },
+      { text: 'Kelola role & hak akses staf', included: false },
+      { text: 'Pesanan mandiri pelanggan (self-order)', included: false },
+      { text: 'Pembayaran SmartBank (QRIS)', included: false },
+      { text: 'Export laporan CSV', included: false },
       { text: 'Multi cabang', included: false },
-      { text: 'Export laporan (Excel/PDF)', included: false },
-      { text: 'Support prioritas 24/7', included: false },
       { text: 'Custom branding struk', included: false },
     ]
   },
@@ -68,17 +67,16 @@ const pricingPlans = [
     icon: '⚡',
     popular: true,
     features: [
-      { text: 'Produk tak terbatas', included: true },
-      { text: 'Hingga 5 akun pengguna', included: true },
-      { text: 'Transaksi POS lengkap', included: true },
-      { text: 'Laporan harian & mingguan', included: true },
-      { text: 'Cetak struk (thermal)', included: true },
-      { text: 'Pembayaran Cash', included: true },
-      { text: 'Pembayaran QRIS (Midtrans)', included: true },
-      { text: 'Laporan pajak & keuangan', included: true },
+      { text: 'Kelola produk (tak terbatas)', included: true },
+      { text: 'Transaksi POS — Pembayaran Cash', included: true },
+      { text: 'Cetak struk thermal', included: true },
+      { text: 'Laporan transaksi harian', included: true },
+      { text: 'Tambah staf (Kasir & Operator)', included: true },
+      { text: 'Kelola role & hak akses staf', included: true },
+      { text: 'Pesanan mandiri pelanggan (self-order)', included: true },
+      { text: 'Pembayaran SmartBank (QRIS)', included: true },
+      { text: 'Export laporan CSV', included: true },
       { text: 'Multi cabang', included: false },
-      { text: 'Export laporan (Excel/PDF)', included: true },
-      { text: 'Support prioritas 24/7', included: true },
       { text: 'Custom branding struk', included: false },
     ]
   },
@@ -91,17 +89,16 @@ const pricingPlans = [
     color: 'from-amber-500 to-orange-600',
     icon: '👑',
     features: [
-      { text: 'Produk tak terbatas', included: true },
-      { text: 'Unlimited akun pengguna', included: true },
-      { text: 'Transaksi POS lengkap', included: true },
-      { text: 'Laporan real-time & analitik', included: true },
-      { text: 'Cetak struk (thermal)', included: true },
-      { text: 'Pembayaran Cash', included: true },
-      { text: 'Pembayaran QRIS (Midtrans)', included: true },
-      { text: 'Laporan pajak & keuangan', included: true },
+      { text: 'Kelola produk (tak terbatas)', included: true },
+      { text: 'Transaksi POS — Pembayaran Cash', included: true },
+      { text: 'Cetak struk thermal', included: true },
+      { text: 'Laporan transaksi harian', included: true },
+      { text: 'Tambah staf (Kasir & Operator)', included: true },
+      { text: 'Kelola role & hak akses staf', included: true },
+      { text: 'Pesanan mandiri pelanggan (self-order)', included: true },
+      { text: 'Pembayaran SmartBank (QRIS)', included: true },
+      { text: 'Export laporan CSV', included: true },
       { text: 'Multi cabang (unlimited)', included: true },
-      { text: 'Export laporan (Excel/PDF)', included: true },
-      { text: 'Support prioritas 24/7', included: true },
       { text: 'Custom branding struk', included: true },
     ]
   },
@@ -262,7 +259,13 @@ const AdminDashboard = ({ onBack }) => {
   });
   const [staff, setStaff] = useState([]);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
-  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'Kasir' });
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: '' });
+  
+  // Custom Roles States
+  const [roles, setRoles] = useState([]);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [roleForm, setRoleForm] = useState({ id: null, name: '', permissions: [] });
+
   const [showBranchSettings, setShowBranchSettings] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [receiptSettings, setReceiptSettings] = useState(() => {
@@ -485,11 +488,16 @@ const AdminDashboard = ({ onBack }) => {
   };
 
   useEffect(() => {
+    fetchRoles();
+  }, []);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       fetchProducts();
       fetchTransactions();
-      if (activeTab === 'staf') {
+      if (activeTab === 'staf' || activeTab === 'role') {
         fetchStaff();
+        fetchRoles();
       }
     }, 0);
     return () => clearTimeout(timer);
@@ -710,6 +718,99 @@ const AdminDashboard = ({ onBack }) => {
         fetchStaff();
       } else {
         showToast('error', data.message || 'Gagal menghapus staf');
+      }
+    } catch (err) {
+      showToast('error', 'Kesalahan koneksi ke server');
+    }
+  };
+
+  // --- LOGIK MANAJEMEN CUSTOM ROLE ---
+  const fetchRoles = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/api/roles');
+      if (res.ok) {
+        const data = await res.json();
+        setRoles(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Gagal mengambil data role:', err);
+    }
+  };
+
+  const handleOpenAddRole = () => {
+    setRoleForm({ id: null, name: '', permissions: [] });
+    setShowRoleModal(true);
+  };
+
+  const handleOpenEditRole = (roleObj) => {
+    setRoleForm({
+      id: roleObj.id,
+      name: roleObj.name,
+      permissions: roleObj.permissions || []
+    });
+    setShowRoleModal(true);
+  };
+
+  const handleSaveRole = async (e) => {
+    e.preventDefault();
+    if (!roleForm.name.trim()) {
+      showToast('error', 'Nama role wajib diisi!');
+      return;
+    }
+    setLoading(true);
+    try {
+      const isEdit = roleForm.id !== null;
+      const url = isEdit ? `http://localhost:3000/api/roles/${roleForm.id}` : 'http://localhost:3000/api/roles';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: roleForm.name, permissions: roleForm.permissions })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast('success', `Role berhasil ${isEdit ? 'diperbarui' : 'dibuat'}!`);
+        setShowRoleModal(false);
+        setRoleForm({ id: null, name: '', permissions: [] });
+        fetchRoles();
+        
+        // Sinkronisasi memori lokal dengan role baru
+        const freshRolesRes = await fetch('http://localhost:3000/api/roles');
+        if (freshRolesRes.ok) {
+          const freshRoles = await freshRolesRes.json();
+          setDynamicPermissions(freshRoles);
+        }
+      } else {
+        showToast('error', data.message || 'Gagal menyimpan role');
+      }
+    } catch (err) {
+      showToast('error', 'Kesalahan koneksi ke server');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteRole = async (roleId) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus role ini?')) return;
+    try {
+      const res = await fetch(`http://localhost:3000/api/roles/${roleId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('success', 'Role berhasil dihapus!');
+        fetchRoles();
+        
+        // Sinkronisasi memori lokal
+        const freshRolesRes = await fetch('http://localhost:3000/api/roles');
+        if (freshRolesRes.ok) {
+          const freshRoles = await freshRolesRes.json();
+          setDynamicPermissions(freshRoles);
+        }
+      } else {
+        showToast('error', data.message || 'Gagal menghapus role');
       }
     } catch (err) {
       showToast('error', 'Kesalahan koneksi ke server');
@@ -1068,7 +1169,12 @@ const AdminDashboard = ({ onBack }) => {
             >
               <Menu size={24} />
             </button>
-             <h2 className="text-xl font-bold">{allowedMenuItems.find(i => i.id === activeTab)?.label || 'Dashboard'}</h2>
+            <div className="flex flex-col">
+              <h2 className="text-xl font-bold leading-tight">{allowedMenuItems.find(i => i.id === activeTab)?.label || 'Dashboard'}</h2>
+              {profileData?.company_name && (
+                <span className="text-[10px] text-purple-400 font-bold uppercase tracking-wider">{profileData.company_name}</span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-4">
@@ -1800,6 +1906,86 @@ const AdminDashboard = ({ onBack }) => {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* ─── TAB KELOLA ROLE ─── */}
+          {activeTab === 'role' && canAccess(currentRole, 'role') && (
+            <div className="animate-in fade-in space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-extrabold text-white">Kelola Role</h3>
+                  <p className="text-slate-400 text-sm mt-1">Atur role dan izin akses untuk setiap jabatan di usaha Anda.</p>
+                </div>
+                <button
+                  onClick={handleOpenAddRole}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-purple-600/20 transition-all active:scale-95"
+                >
+                  <Plus size={16} /> Tambah Role
+                </button>
+              </div>
+
+              {/* Role Cards */}
+              <div className="grid gap-4">
+                {roles.length === 0 ? (
+                  <div className="text-center py-16 text-slate-500">
+                    <ShieldCheck size={48} className="mx-auto mb-4 opacity-30" />
+                    <p className="font-semibold">Belum ada role</p>
+                    <p className="text-sm mt-1">Klik "Tambah Role" untuk membuat role pertama Anda.</p>
+                  </div>
+                ) : (
+                  roles.map((roleItem) => (
+                    <div key={roleItem.id} className="bg-[#0f1423] border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-slate-700 transition-all">
+                      {/* Role Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                            <ShieldCheck size={16} className="text-purple-400" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-white text-sm">{roleItem.name}</h4>
+                            {roleItem.is_default === 1 && (
+                              <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Default</span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Permissions badges */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {(roleItem.permissions || []).map((perm) => {
+                            const menuItem = ALL_MENU_ITEMS.find(m => m.id === perm);
+                            return menuItem ? (
+                              <span key={perm} className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wide">
+                                {menuItem.label}
+                              </span>
+                            ) : null;
+                          })}
+                          {(!roleItem.permissions || roleItem.permissions.length === 0) && (
+                            <span className="text-xs text-slate-600 italic">Tidak ada akses</span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleOpenEditRole(roleItem)}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all"
+                        >
+                          <Pencil size={13} /> Edit
+                        </button>
+                        {roleItem.is_default !== 1 && (
+                          <button
+                            onClick={() => handleDeleteRole(roleItem.id)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 rounded-xl text-xs font-bold transition-all"
+                          >
+                            <Trash2 size={13} /> Hapus
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -2738,9 +2924,18 @@ const AdminDashboard = ({ onBack }) => {
                   onChange={(e) => setStaffForm({...staffForm, role: e.target.value})}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm cursor-pointer"
                 >
-                  <option value="Operator">Operator (Kelola Produk)</option>
-                  <option value="Kasir">Kasir (Transaksi POS)</option>
-                  <option value="Konsumen">Konsumen (Pelanggan)</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.name}>
+                      {r.name}
+                    </option>
+                  ))}
+                  {roles.length === 0 && (
+                    <>
+                      <option value="Operator">Operator</option>
+                      <option value="Kasir">Kasir</option>
+                      <option value="Konsumen">Konsumen</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -2751,6 +2946,112 @@ const AdminDashboard = ({ onBack }) => {
               >
                 {loading ? 'Memproses...' : 'Tambah Staf'}
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL TAMBAH / EDIT ROLE ─── */}
+      {showRoleModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-[#0f1423] border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl shadow-black/40 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-500/10 rounded-2xl flex items-center justify-center">
+                  <ShieldCheck size={20} className="text-purple-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  {roleForm.id ? 'Edit Role' : 'Tambah Role Baru'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowRoleModal(false)}
+                className="text-slate-500 hover:text-white transition p-1 hover:bg-slate-800 rounded-lg"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <form onSubmit={handleSaveRole} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
+                {/* Role Name */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Nama Role</label>
+                  <input
+                    type="text"
+                    value={roleForm.name}
+                    onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
+                    disabled={roleForm.id && roles.find(r => r.id === roleForm.id)?.is_default === 1}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder="Contoh: Supervisor, Barista, Manajer Kasir"
+                    required
+                  />
+                  {roleForm.id && roles.find(r => r.id === roleForm.id)?.is_default === 1 && (
+                    <p className="text-[11px] text-amber-400 mt-1.5">⚠️ Nama role default tidak dapat diubah, tapi izin aksesnya bisa diedit.</p>
+                  )}
+                </div>
+
+                {/* Permissions */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Izin Akses Menu</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ALL_MENU_ITEMS.filter(m => !['katalog', 'mypesanan'].includes(m.id)).map((menuItem) => {
+                      const isChecked = roleForm.permissions.includes(menuItem.id);
+                      return (
+                        <label
+                          key={menuItem.id}
+                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all select-none ${
+                            isChecked
+                              ? 'bg-purple-600/10 border-purple-500/40 text-white'
+                              : 'bg-slate-900/50 border-slate-800 text-slate-400 hover:border-slate-600'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const perms = e.target.checked
+                                ? [...roleForm.permissions, menuItem.id]
+                                : roleForm.permissions.filter(id => id !== menuItem.id);
+                              setRoleForm({ ...roleForm, permissions: perms });
+                            }}
+                            className="w-4 h-4 rounded accent-purple-500"
+                          />
+                          <div className="flex items-center gap-2">
+                            <span className={isChecked ? 'text-purple-400' : 'text-slate-600'}>
+                              {menuItem.icon}
+                            </span>
+                            <span className="text-xs font-bold">{menuItem.label}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-3">
+                    💡 Centang menu yang boleh diakses oleh staf dengan role ini.
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 border-t border-slate-800 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRoleModal(false)}
+                  className="flex-1 py-3 border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-white rounded-xl font-bold text-sm transition-all"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-bold rounded-xl text-sm shadow-lg shadow-purple-600/20 transition-all active:scale-[0.98] disabled:opacity-60"
+                >
+                  {loading ? 'Menyimpan...' : (roleForm.id ? 'Simpan Perubahan' : 'Buat Role')}
+                </button>
+              </div>
             </form>
           </div>
         </div>
