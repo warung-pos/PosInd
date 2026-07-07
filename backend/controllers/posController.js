@@ -8,12 +8,24 @@ export const payTransaction = async (req, res) => {
         return res.status(400).json({ message: 'Keranjang belanja kosong' });
     }
 
-    const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const fee_pos = Math.round(subtotal * 0.01);
-    const total = subtotal + fee_pos;
-    const invoice = `INV-${Date.now()}`;
-
     try {
+        // Validasi kecukupan stok terlebih dahulu
+        for (const item of items) {
+            const [prodRows] = await db.promise().query('SELECT stock, name FROM products WHERE id = ?', [item.id]);
+            if (prodRows.length === 0) {
+                return res.status(404).json({ message: `Produk "${item.name}" tidak ditemukan` });
+            }
+            const product = prodRows[0];
+            if (product.stock < item.qty) {
+                return res.status(400).json({ message: `Stok produk "${product.name}" tidak mencukupi (Tersedia: ${product.stock}, Diminta: ${item.qty})` });
+            }
+        }
+
+        const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const fee_pos = Math.round(subtotal * 0.01);
+        const total = subtotal + fee_pos;
+        const invoice = `INV-${Date.now()}`;
+
         let paymentStatus = 'Selesai';
         let qrisUrl = null;
         let qrString = null;
@@ -90,12 +102,25 @@ export const simulateSuccess = async (req, res) => {
         const transaction = rows[0];
 
         if (transaction.status === 'Pending') {
-            await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
-
             const [items] = await db.promise().query(
                 'SELECT * FROM transaction_items WHERE transaction_id = ?',
                 [transaction.id]
             );
+
+            // Validasi kecukupan stok
+            for (const item of items) {
+                if (item.item_id) {
+                    const [prodRows] = await db.promise().query('SELECT stock, name FROM products WHERE id = ?', [item.item_id]);
+                    if (prodRows.length > 0) {
+                        const product = prodRows[0];
+                        if (product.stock < item.qty) {
+                            return res.status(400).json({ message: `Stok produk "${product.name}" tidak mencukupi (Tersedia: ${product.stock}, Diminta: ${item.qty})` });
+                        }
+                    }
+                }
+            }
+
+            await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
 
             for (const item of items) {
                 if (item.item_id) {
@@ -174,6 +199,24 @@ export const processConsumerOrder = async (req, res) => {
             return res.status(400).json({ message: 'Pesanan ini sudah diproses atau bukan status Pending' });
         }
 
+        const [items] = await db.promise().query(
+            'SELECT * FROM transaction_items WHERE transaction_id = ?',
+            [transaction.id]
+        );
+
+        // Validasi kecukupan stok sebelum memproses pesanan
+        for (const item of items) {
+            if (item.item_id) {
+                const [prodRows] = await db.promise().query('SELECT stock, name FROM products WHERE id = ?', [item.item_id]);
+                if (prodRows.length > 0) {
+                    const product = prodRows[0];
+                    if (product.stock < item.qty) {
+                        return res.status(400).json({ message: `Stok produk "${product.name}" tidak mencukupi (Tersedia: ${product.stock}, Diminta: ${item.qty})` });
+                    }
+                }
+            }
+        }
+
         // Update status dan metode pembayaran
         await db.promise().query(
             'UPDATE transactions SET status = ?, method = ?, cash_paid = ?, change_due = ? WHERE invoice = ?',
@@ -181,10 +224,6 @@ export const processConsumerOrder = async (req, res) => {
         );
 
         // Kurangi stok produk
-        const [items] = await db.promise().query(
-            'SELECT * FROM transaction_items WHERE transaction_id = ?',
-            [transaction.id]
-        );
         for (const item of items) {
             if (item.item_id) {
                 await db.promise().query(
@@ -273,19 +312,35 @@ export const confirmConsumerPayment = async (req, res) => {
             return res.json({ message: 'Transaksi sudah selesai', invoice, status: 'Selesai' });
         }
 
-        // Tandai sebagai Selesai
-        await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
-
-        // Potong stok produk
         const [items] = await db.promise().query(
             'SELECT * FROM transaction_items WHERE transaction_id = ?',
             [transaction.id]
         );
+
+        // Validasi kecukupan stok sebelum menyelesaikan pembayaran QRIS
         for (const item of items) {
-            await db.promise().query(
-                'UPDATE products SET stock = GREATEST(0, stock - ?), sales = sales + ? WHERE id = ?',
-                [item.qty, item.qty, item.item_id]
-            );
+            if (item.item_id) {
+                const [prodRows] = await db.promise().query('SELECT stock, name FROM products WHERE id = ?', [item.item_id]);
+                if (prodRows.length > 0) {
+                    const product = prodRows[0];
+                    if (product.stock < item.qty) {
+                        return res.status(400).json({ message: `Stok produk "${product.name}" tidak mencukupi (Tersedia: ${product.stock}, Diminta: ${item.qty})` });
+                    }
+                }
+            }
+        }
+
+        // Tandai sebagai Selesai
+        await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
+
+        // Potong stok produk
+        for (const item of items) {
+            if (item.item_id) {
+                await db.promise().query(
+                    'UPDATE products SET stock = GREATEST(0, stock - ?), sales = sales + ? WHERE id = ?',
+                    [item.qty, item.qty, item.item_id]
+                );
+            }
         }
 
         res.json({ message: 'Pembayaran QRIS dikonfirmasi', invoice, status: 'Selesai' });

@@ -263,6 +263,28 @@ const ManagerDashboard = ({ onBack }) => {
   const [staff, setStaff] = useState([]);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'Kasir' });
+
+  // Role Management States
+  const [roles, setRoles] = useState([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [showAddRoleModal, setShowAddRoleModal] = useState(false);
+  const [showEditRoleModal, setShowEditRoleModal] = useState(false);
+  const [editingRole, setEditingRole] = useState(null);
+  const [roleForm, setRoleForm] = useState({ name: '', permissions: [] });
+
+  const ALL_PERMISSIONS = [
+    { id: 'dashboard',  label: 'Dashboard',       group: 'Umum' },
+    { id: 'produk',     label: 'Lihat Produk',     group: 'Produk' },
+    { id: 'laporan',    label: 'Lihat Laporan',    group: 'Laporan' },
+    { id: 'staf',       label: 'Kelola Staf',      group: 'Manajemen' },
+    { id: 'role',       label: 'Kelola Role',      group: 'Manajemen' },
+    { id: 'paket',      label: 'Kelola Langganan', group: 'Manajemen' },
+    { id: 'transaksi',  label: 'Transaksi POS',    group: 'Kasir' },
+    { id: 'pesanan',    label: 'Pesanan Masuk',    group: 'Kasir' },
+    { id: 'riwayat',    label: 'Riwayat',          group: 'Kasir' },
+    { id: 'katalog',    label: 'Katalog Produk',   group: 'Konsumen' },
+    { id: 'mypesanan',  label: 'Pesanan Saya',     group: 'Konsumen' },
+  ];
   const [showBranchSettings, setShowBranchSettings] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [receiptSettings, setReceiptSettings] = useState(() => {
@@ -272,6 +294,98 @@ const ManagerDashboard = ({ onBack }) => {
   const [showReceiptBrandingModal, setShowReceiptBrandingModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeModalReason, setUpgradeModalReason] = useState('');
+  const [reportPeriod, setReportPeriod] = useState('Harian');
+
+  const getFilteredTransactionsForReport = (period) => {
+    const now = new Date();
+    // Gunakan tanggal lokal hari ini mulai jam 00:00:00 untuk pemfilteran Harian yang akurat
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    return transactions.filter(t => {
+      const txDate = new Date(t.created_at);
+      if (period === 'Harian') {
+        return txDate >= startOfToday;
+      } else if (period === 'Mingguan') {
+        const start = new Date();
+        start.setDate(now.getDate() - 7);
+        return txDate >= start;
+      } else if (period === 'Bulanan') {
+        const start = new Date();
+        start.setMonth(now.getMonth() - 1);
+        return txDate >= start;
+      } else if (period === 'Tahunan') {
+        const start = new Date();
+        start.setFullYear(now.getFullYear() - 1);
+        return txDate >= start;
+      }
+      return true;
+    });
+  };
+
+  const getChartData = (filteredTx) => {
+    const now = new Date();
+    if (reportPeriod === 'Harian') {
+      // 6 interval: 00-04, 04-08, 08-12, 12-16, 16-20, 20-00
+      const bins = [0, 0, 0, 0, 0, 0];
+      filteredTx.forEach(t => {
+        const hour = new Date(t.created_at).getHours();
+        const binIdx = Math.min(5, Math.floor(hour / 4));
+        bins[binIdx] += Number(t.total);
+      });
+      const labels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-00'];
+      return { labels, values: bins };
+    } else if (reportPeriod === 'Mingguan') {
+      // 7 hari terakhir
+      const bins = [0, 0, 0, 0, 0, 0, 0];
+      const labels = [];
+      const daysName = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
+        labels.push(`${daysName[d.getDay()]} ${d.getDate()}`);
+      }
+      filteredTx.forEach(t => {
+        const txDate = new Date(t.created_at);
+        const diffTime = now.setHours(23,59,59,999) - txDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays < 7) {
+          bins[6 - diffDays] += Number(t.total);
+        }
+      });
+      return { labels, values: bins };
+    } else if (reportPeriod === 'Bulanan') {
+      // 4 minggu terakhir
+      const bins = [0, 0, 0, 0];
+      const labels = ['Mgg 1', 'Mgg 2', 'Mgg 3', 'Mgg 4'];
+      filteredTx.forEach(t => {
+        const txDate = new Date(t.created_at);
+        const diffTime = now.setHours(23,59,59,999) - txDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const weekIdx = Math.min(3, Math.floor(diffDays / 7));
+        bins[3 - weekIdx] += Number(t.total);
+      });
+      return { labels, values: bins };
+    } else if (reportPeriod === 'Tahunan') {
+      // 12 bulan terakhir
+      const bins = Array(12).fill(0);
+      const labels = [];
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(now.getMonth() - i);
+        labels.push(monthNames[d.getMonth()]);
+      }
+      filteredTx.forEach(t => {
+        const txDate = new Date(t.created_at);
+        const diffMonths = (now.getFullYear() - txDate.getFullYear()) * 12 + now.getMonth() - txDate.getMonth();
+        if (diffMonths >= 0 && diffMonths < 12) {
+          bins[11 - diffMonths] += Number(t.total);
+        }
+      });
+      return { labels, values: bins };
+    }
+    return { labels: [], values: [] };
+  };
 
   const showToast = (type, text) => {
     setToast({ type, text });
@@ -473,6 +587,80 @@ const ManagerDashboard = ({ onBack }) => {
     }
   };
 
+  const fetchRoles = async () => {
+    setRolesLoading(true);
+    try {
+      const res = await fetch('http://localhost:3000/api/roles');
+      if (res.ok) {
+        const data = await res.json();
+        setRoles(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Gagal mengambil data roles:', err);
+    }
+    setRolesLoading(false);
+  };
+
+  const handleSaveRole = async (e) => {
+    e.preventDefault();
+    if (!roleForm.name.trim()) { showToast('error', 'Nama role wajib diisi!'); return; }
+    try {
+      const isEdit = !!editingRole;
+      const url = isEdit
+        ? `http://localhost:3000/api/roles/${editingRole.id}`
+        : 'http://localhost:3000/api/roles';
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: roleForm.name, permissions: roleForm.permissions })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('success', isEdit ? 'Role berhasil diperbarui!' : 'Role berhasil ditambahkan!');
+        setShowAddRoleModal(false);
+        setShowEditRoleModal(false);
+        setRoleForm({ name: '', permissions: [] });
+        setEditingRole(null);
+        fetchRoles();
+      } else {
+        showToast('error', data.message || 'Gagal menyimpan role');
+      }
+    } catch {
+      showToast('error', 'Kesalahan koneksi ke server');
+    }
+  };
+
+  const handleDeleteRole = async (roleId) => {
+    if (!confirm('Hapus role ini? Pastikan tidak ada staf yang menggunakan role ini.')) return;
+    try {
+      const res = await fetch(`http://localhost:3000/api/roles/${roleId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('success', 'Role berhasil dihapus!');
+        fetchRoles();
+      } else {
+        showToast('error', data.message || 'Gagal menghapus role');
+      }
+    } catch {
+      showToast('error', 'Kesalahan koneksi ke server');
+    }
+  };
+
+  const handleOpenEditRole = (role) => {
+    setEditingRole(role);
+    setRoleForm({ name: role.name, permissions: Array.isArray(role.permissions) ? [...role.permissions] : [] });
+    setShowEditRoleModal(true);
+  };
+
+  const togglePermission = (permId) => {
+    setRoleForm(prev => ({
+      ...prev,
+      permissions: prev.permissions.includes(permId)
+        ? prev.permissions.filter(p => p !== permId)
+        : [...prev.permissions, permId]
+    }));
+  };
+
   const fetchTransactions = async () => {
     try {
       const res = await fetch('http://localhost:3000/api/pos/transactions');
@@ -490,6 +678,9 @@ const ManagerDashboard = ({ onBack }) => {
       fetchTransactions();
       if (activeTab === 'staf') {
         fetchStaff();
+      }
+      if (activeTab === 'role') {
+        fetchRoles();
       }
     }, 0);
     return () => clearTimeout(timer);
@@ -980,8 +1171,9 @@ const ManagerDashboard = ({ onBack }) => {
       setShowUpgradeModal(true);
       return;
     }
+    const filteredTx = getFilteredTransactionsForReport(reportPeriod);
     const headers = ['ID', 'Invoice', 'Tanggal', 'Metode Pembayaran', 'Total', 'Fee POS', 'Status'];
-    const rows = transactions.map(t => [
+    const rows = filteredTx.map(t => [
       t.id,
       t.invoice,
       new Date(t.created_at).toLocaleString(),
@@ -995,11 +1187,11 @@ const ManagerDashboard = ({ onBack }) => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `laporan_transaksi_${Date.now()}.csv`);
+    link.setAttribute("download", `laporan_transaksi_${reportPeriod}_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('success', 'Laporan berhasil diekspor ke CSV!');
+    showToast('success', `Laporan ${reportPeriod} berhasil diekspor ke CSV!`);
   };
 
   const handlePrintPDFReport = () => {
@@ -1008,7 +1200,125 @@ const ManagerDashboard = ({ onBack }) => {
       setShowUpgradeModal(true);
       return;
     }
-    window.print();
+
+    const filteredTx = getFilteredTransactionsForReport(reportPeriod);
+    const totalPendapatan = filteredTx.reduce((s, t) => s + Number(t.total), 0);
+    const totalEstimasi = reportPeriod === 'Harian' ? Math.round(totalPendapatan * 5.4) : Math.round(totalPendapatan * 1.2);
+    const estimasiPajak = Math.round(totalPendapatan * 0.11);
+    const penjualanBersih = Math.round(totalPendapatan / 1.11);
+    const printDate = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    // Grafik SVG dinamis
+    const chartData = getChartData(filteredTx);
+    const maxBar = Math.max(...chartData.values, 1);
+    const chartHeight = 80;
+    const barWidth = 28;
+    const gap = 10;
+    const svgWidth = Math.max(300, chartData.values.length * (barWidth + gap));
+    const barsHtml = chartData.values.map((val, i) => {
+      const h = Math.round((val / maxBar) * chartHeight);
+      const x = i * (barWidth + gap) + 10;
+      const y = chartHeight - h;
+      return `
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="4" fill="#7c3aed" />
+        <text x="${x + barWidth / 2}" y="${chartHeight + 14}" text-anchor="middle" font-size="8" fill="#666">${chartData.labels[i]}</text>
+        <text x="${x + barWidth / 2}" y="${y - 4}" text-anchor="middle" font-size="7" font-weight="bold" fill="#333">${val > 0 ? `${Math.round(val/1000)}k` : ''}</text>
+      `;
+    }).join('');
+    const chartSvg = `<svg width="${svgWidth + 20}" height="${chartHeight + 25}" xmlns="http://www.w3.org/2000/svg">${barsHtml}</svg>`;
+
+    const reportHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; background: #fff; padding: 24px 28px; max-width: 794px; margin: 0 auto; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #7c3aed; padding-bottom: 14px; }
+          .brand { font-size: 22px; font-weight: 900; letter-spacing: 2px; color: #7c3aed; }
+          .subtitle { font-size: 11px; color: #64748b; margin-top: 4px; }
+          .print-date { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+          .section-title { font-size: 13px; font-weight: 700; color: #7c3aed; margin: 18px 0 10px 0; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; }
+          .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+          .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+          .stat-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+          .stat-value { font-size: 16px; font-weight: 800; color: #1e293b; margin-top: 4px; }
+          .stat-value.purple { color: #7c3aed; }
+          .stat-value.green { color: #059669; }
+          .stat-value.red { color: #dc2626; }
+          .tax-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+          .tax-table th { background: #f1f5f9; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 8px 10px; text-align: left; color: #475569; }
+          .tax-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-size: 11px; }
+          .tax-table tr:last-child td { border-bottom: none; }
+          .total-row td { font-weight: 800; font-size: 12px; background: #faf5ff; color: #7c3aed; border-top: 2px solid #e9d5ff !important; }
+          .chart-wrap { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin-top: 8px; }
+          .chart-title { font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 10px; }
+          .tx-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+          .tx-table th { background: #f1f5f9; font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 7px 8px; text-align: left; color: #475569; }
+          .tx-table td { padding: 7px 8px; border-bottom: 1px solid #f8fafc; font-size: 10px; color: #334155; }
+          .tx-table tr:last-child td { border-bottom: none; }
+          .footer { text-align: center; margin-top: 24px; padding-top: 12px; border-top: 1px dashed #cbd5e1; font-size: 10px; color: #94a3b8; }
+          @page { size: A4; margin: 15mm 15mm; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="brand">WARUNGPOS</div>
+          <div class="subtitle">Laporan Analitik &amp; Keuangan Bisnis (${reportPeriod}) &mdash; Paket ${plan}</div>
+          <div class="print-date">Dicetak pada: ${printDate}</div>
+        </div>
+        <div class="section-title">📊 Ringkasan Pendapatan (${reportPeriod})</div>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">Total Pendapatan</div><div class="stat-value green">Rp ${totalPendapatan.toLocaleString('id-ID')}</div></div>
+          <div class="stat-card"><div class="stat-label">Estimasi Periode</div><div class="stat-value purple">Rp ${totalEstimasi.toLocaleString('id-ID')}</div></div>
+          <div class="stat-card"><div class="stat-label">Estimasi Pajak PPN (11%)</div><div class="stat-value red">Rp ${estimasiPajak.toLocaleString('id-ID')}</div></div>
+        </div>
+        <div class="section-title">🧾 Laporan Pajak &amp; Keuangan</div>
+        <table class="tax-table">
+          <thead><tr><th>Keterangan</th><th style="text-align:right">Jumlah (Rp)</th></tr></thead>
+          <tbody>
+            <tr><td>Total Penjualan Kotor (PPN Termasuk)</td><td style="text-align:right">Rp ${totalPendapatan.toLocaleString('id-ID')}</td></tr>
+            <tr><td>Total Penjualan Bersih (DPP)</td><td style="text-align:right">Rp ${penjualanBersih.toLocaleString('id-ID')}</td></tr>
+            <tr><td>Pajak Keluaran (PPN 11%)</td><td style="text-align:right">Rp ${estimasiPajak.toLocaleString('id-ID')}</td></tr>
+            <tr><td>Total Transaksi</td><td style="text-align:right">${filteredTx.length} transaksi</td></tr>
+            <tr class="total-row"><td>Total Pendapatan Pajak Terlapor</td><td style="text-align:right">Rp ${estimasiPajak.toLocaleString('id-ID')}</td></tr>
+          </tbody>
+        </table>
+        <div class="section-title">📈 Grafik Penjualan (${reportPeriod})</div>
+        <div class="chart-wrap"><div class="chart-title">Distribusi Penjualan Terlapor</div>${chartSvg}</div>
+        <div class="section-title">📋 Riwayat Transaksi (${filteredTx.length > 0 ? `${Math.min(filteredTx.length, 20)} Terbaru` : 'Tidak Ada Data'})</div>
+        <table class="tx-table">
+          <thead><tr><th>Invoice</th><th>Tanggal</th><th>Metode</th><th style="text-align:right">Total</th><th style="text-align:center">Status</th></tr></thead>
+          <tbody>
+            ${filteredTx.slice(0, 20).map(t => `<tr><td style="color:#7c3aed;font-weight:700">${t.invoice}</td><td>${new Date(t.created_at).toLocaleString('id-ID')}</td><td>${t.method || '-'}</td><td style="text-align:right;font-weight:600">Rp ${Number(t.total).toLocaleString('id-ID')}</td><td style="text-align:center"><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700">${t.status || 'Selesai'}</span></td></tr>`).join('')}
+            ${filteredTx.length === 0 ? '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">Belum ada data transaksi</td></tr>' : ''}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Laporan digenerate otomatis oleh sistem <strong>WarungPOS</strong> &mdash; ${printDate}</p>
+          <p style="margin-top:4px">Paket: ${plan} | Seluruh data bersumber dari transaksi terkonfirmasi</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(reportHtml);
+    iframe.contentDocument.close();
+    iframe.onload = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 1500);
+    };
   };
 
   const subtotalCart = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -1387,15 +1697,23 @@ const ManagerDashboard = ({ onBack }) => {
             </div>
           )}
 
-          {/* HALAMAN PRODUK & TRANSAKSI TETAP SAMA... */}
+          {/* HALAMAN PRODUK — Manager: View Only (tidak bisa Tambah/Edit/Hapus) */}
           {activeTab === 'produk' && (
             <div className="animate-in fade-in space-y-6">
-              <div className="flex justify-between items-center"><h3 className="text-xl font-bold">Daftar Produk</h3><button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-2xl font-bold transition shadow-lg"><Plus size={18} /> Tambah Produk</button></div>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold">Daftar Produk & Stok</h3>
+                  <p className="text-slate-500 text-xs mt-0.5">Informasi produk dan ketersediaan stok</p>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-2xl text-xs text-slate-400 font-semibold">
+                  <Package size={14} /> {products.length} Produk
+                </div>
+              </div>
               <div className="bg-[#0f1423] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-800/50 border-b border-slate-800"><tr><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Nama Produk</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Kategori</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Harga</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Stok</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Aksi</th></tr></thead>
+                  <thead className="bg-slate-800/50 border-b border-slate-800"><tr><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Nama Produk</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Kategori</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Harga</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Stok</th></tr></thead>
                   <tbody className="divide-y divide-slate-800">{filteredProducts.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-800/20 transition-colors"><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 overflow-hidden">{p.image ? <img src={`http://localhost:3000/uploads/${p.image}`} alt={p.name} className="w-full h-full object-cover" /> : <Package size={20} />}</div><span className="font-bold">{p.name}</span></div></td><td className="px-6 py-4 text-sm text-slate-400">{p.category}</td><td className="px-6 py-4 font-bold text-purple-400">Rp {Number(p.price).toLocaleString()}</td><td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-[10px] font-bold ${p.stock < 20 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>{p.stock} Tersedia</span></td><td className="px-6 py-4 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleOpenModal(p)} className="p-2 text-slate-500 hover:text-white"><Pencil size={18} /></button><button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-slate-500 hover:text-red-400"><Trash2 size={18} /></button></div></td></tr>
+                      <tr key={p.id} className="hover:bg-slate-800/20 transition-colors"><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 overflow-hidden">{p.image ? <img src={`http://localhost:3000/uploads/${p.image}`} alt={p.name} className="w-full h-full object-cover" /> : <Package size={20} />}</div><span className="font-bold">{p.name}</span></div></td><td className="px-6 py-4 text-sm text-slate-400">{p.category}</td><td className="px-6 py-4 font-bold text-purple-400">Rp {Number(p.price).toLocaleString()}</td><td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-[10px] font-bold ${p.stock < 20 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>{p.stock} Tersedia</span></td></tr>
                     ))}</tbody>
                 </table>
               </div>
@@ -1564,145 +1882,175 @@ const ManagerDashboard = ({ onBack }) => {
              </div>
           )}
 
-          {activeTab === 'laporan' && (
-            <div className="animate-in fade-in space-y-8">
-              {/* Header Laporan */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <h3 className="text-xl font-bold text-white">Laporan & Analitik Bisnis</h3>
-                  <p className="text-slate-500 text-xs mt-0.5">
-                    {plan.toLowerCase().includes('basic') 
-                      ? 'Paket Basic: Laporan Harian saja' 
-                      : plan.toLowerCase().includes('pro') 
-                        ? 'Paket Pro: Laporan Harian, Mingguan & Pajak' 
-                        : 'Paket Enterprise: Analitik Real-time & Multi Cabang'}
-                  </p>
-                </div>
-                
-                {/* Export Buttons */}
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <button 
-                    onClick={handleExportCSV}
-                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all ${
-                      plan.toLowerCase().includes('basic') 
-                        ? 'bg-slate-800 text-slate-500 border border-slate-700/50' 
-                        : 'bg-[#0f1423] hover:bg-slate-800 text-white border border-slate-800'
-                    }`}
-                  >
-                    📥 Export CSV {plan.toLowerCase().includes('basic') && '🔒'}
-                  </button>
-                  <button 
-                    onClick={handlePrintPDFReport}
-                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all ${
-                      plan.toLowerCase().includes('basic') 
-                        ? 'bg-slate-800 text-slate-500 border border-slate-700/50' 
-                        : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-600/10'
-                    }`}
-                  >
-                    📄 Cetak PDF {plan.toLowerCase().includes('basic') && '🔒'}
-                  </button>
-                </div>
-              </div>
+          {activeTab === 'laporan' && (() => {
+            const filteredTx = getFilteredTransactionsForReport(reportPeriod);
+            const totalPendapatan = filteredTx.reduce((s, t) => s + Number(t.total), 0);
+            const totalEstimasi = reportPeriod === 'Harian' ? Math.round(totalPendapatan * 5.4) : Math.round(totalPendapatan * 1.2);
+            const estimasiPajak = Math.round(totalPendapatan * 0.11);
+            const penjualanBersih = Math.round(totalPendapatan / 1.11);
+            const chartData = getChartData(filteredTx);
 
-              {/* STATS CARDS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[
-                  { label: 'Pendapatan (Harian)', value: `Rp ${transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString('id-ID')}`, icon: <Wallet className="text-emerald-400" />, trend: '+15.2%', up: true },
-                  { 
-                    label: 'Pendapatan (Mingguan)', 
-                    value: plan.toLowerCase().includes('basic') ? '🔒 Upgrade Pro' : `Rp ${(transactions.reduce((s,t) => s + Number(t.total), 0) * 5.4).toLocaleString('id-ID')}`, 
-                    icon: <TrendingUp className="text-purple-400" />, 
-                    trend: plan.toLowerCase().includes('basic') ? 'Locked' : '+18.7%', 
-                    up: true 
-                  },
-                  { 
-                    label: 'Estimasi Pajak PPN (11%)', 
-                    value: plan.toLowerCase().includes('basic') ? '🔒 Upgrade Pro' : `Rp ${Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) * 0.11).toLocaleString('id-ID')}`, 
-                    icon: <BarChart3 className="text-blue-400" />, 
-                    trend: plan.toLowerCase().includes('basic') ? 'Locked' : 'Pajak', 
-                    up: false 
-                  },
-                ].map((stat, i) => (
-                  <div key={i} className="bg-[#0f1423] p-5 rounded-3xl border border-slate-800 shadow-xl flex flex-col gap-3 group transition-all hover:border-purple-500/30">
-                    <div className="flex items-center justify-between">
-                      <div className="p-3 bg-slate-800/50 rounded-2xl group-hover:scale-110 transition-transform">
-                        {stat.icon}
-                      </div>
-                      <span className={`text-[10px] font-bold ${stat.up ? 'text-emerald-400 bg-emerald-400/10' : 'text-red-400 bg-red-400/10'} px-2.5 py-1 rounded-full`}>
-                        {stat.trend}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-slate-500 text-xs font-medium">{stat.label}</p>
-                      <h3 className="text-xl font-bold mt-0.5">{stat.value}</h3>
-                    </div>
+            return (
+              <div className="animate-in fade-in space-y-8">
+                {/* Header Laporan */}
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Laporan &amp; Analitik Bisnis</h3>
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      {plan.toLowerCase().includes('basic') 
+                        ? 'Paket Basic: Laporan Harian saja' 
+                        : plan.toLowerCase().includes('pro') 
+                          ? 'Paket Pro: Laporan Harian, Mingguan &amp; Pajak' 
+                          : 'Paket Enterprise: Analitik Real-time &amp; Multi Cabang'}
+                    </p>
                   </div>
-                ))}
-              </div>
+                  
+                  {/* Period Selector Buttons */}
+                  <div className="flex bg-[#0f1423] p-1.5 rounded-2xl border border-slate-800 gap-1 self-stretch lg:self-auto justify-between sm:justify-start">
+                    {['Harian', 'Mingguan', 'Bulanan', 'Tahunan'].map((p) => {
+                      const isBasic = plan.toLowerCase().includes('basic');
+                      const isLocked = isBasic && p !== 'Harian';
+                      return (
+                        <button
+                          key={p}
+                          disabled={isLocked}
+                          onClick={() => setReportPeriod(p)}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            reportPeriod === p
+                              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/10'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                          } ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          {p} {isLocked && '🔒'}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-              {/* ADDITIONAL REPORTS SECTION FOR PRO & ENTERPRISE */}
-              {plan.toLowerCase().includes('basic') ? (
-                <div className="bg-gradient-to-br from-purple-900/10 to-slate-900 border border-purple-500/15 rounded-[2rem] p-8 text-center space-y-4">
-                  <div className="text-3xl">📊</div>
-                  <h4 className="text-lg font-bold text-white">Analitik Mingguan & Laporan Pajak Terkunci</h4>
-                  <p className="text-slate-400 text-xs max-w-md mx-auto">
-                    Upgrade ke paket Pro atau Enterprise untuk membuka laporan mingguan/bulanan, laporan pajak otomatis, analisis profit margin, serta ekspor file laporan ke CSV/Excel dan PDF.
-                  </p>
-                  <button 
-                    onClick={() => setActiveTab('paket')}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-6 py-3 rounded-xl shadow-lg transition active:scale-95"
-                  >
-                    👑 Upgrade ke Pro / Enterprise
-                  </button>
+                  {/* Export Buttons */}
+                  <div className="flex gap-2 w-full lg:w-auto">
+                    <button 
+                      onClick={handleExportCSV}
+                      className={`flex-1 lg:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all ${
+                        plan.toLowerCase().includes('basic') 
+                          ? 'bg-slate-800 text-slate-500 border border-slate-700/50' 
+                          : 'bg-[#0f1423] hover:bg-slate-800 text-white border border-slate-800'
+                      }`}
+                    >
+                      📥 Export CSV {plan.toLowerCase().includes('basic') && '🔒'}
+                    </button>
+                    <button 
+                      onClick={handlePrintPDFReport}
+                      className={`flex-1 lg:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all ${
+                        plan.toLowerCase().includes('basic') 
+                          ? 'bg-slate-800 text-slate-500 border border-slate-700/50' 
+                          : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-600/10'
+                      }`}
+                    >
+                      📄 Cetak PDF {plan.toLowerCase().includes('basic') && '🔒'}
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid md:grid-cols-2 gap-6">
-                  {/* Mingguan/Bulanan Chart Mock */}
-                  <div className="bg-[#0f1423] border border-slate-800 p-6 rounded-[2rem] shadow-xl">
-                    <h4 className="font-bold text-sm text-slate-200 mb-4">Grafik Penjualan Mingguan</h4>
-                    <div className="h-48 flex items-end gap-3 pt-6 px-4">
-                      {[40, 65, 30, 85, 50, 95, 75].map((val, idx) => (
-                        <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                          <div className="w-full bg-purple-600/20 hover:bg-purple-600 rounded-t-lg transition-all" style={{ height: `${val}%` }}></div>
-                          <span className="text-[10px] text-slate-500 font-bold">Day {idx+1}</span>
+
+                {/* STATS CARDS */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    { label: `Pendapatan (${reportPeriod})`, value: `Rp ${totalPendapatan.toLocaleString('id-ID')}`, icon: <Wallet className="text-emerald-400" />, trend: '+15.2%', up: true },
+                    { 
+                      label: 'Total Transaksi', 
+                      value: `${filteredTx.length} Transaksi`, 
+                      icon: <TrendingUp className="text-purple-400" />, 
+                      trend: 'Volume', 
+                      up: true 
+                    },
+                    { 
+                      label: 'Estimasi Pajak PPN (11%)', 
+                      value: `Rp ${estimasiPajak.toLocaleString('id-ID')}`, 
+                      icon: <BarChart3 className="text-blue-400" />, 
+                      trend: 'Pajak', 
+                      up: false 
+                    },
+                  ].map((stat, i) => (
+                    <div key={i} className="bg-[#0f1423] p-5 rounded-3xl border border-slate-800 shadow-xl flex flex-col gap-3 group transition-all hover:border-purple-500/30">
+                      <div className="flex items-center justify-between">
+                        <div className="p-3 bg-slate-800/50 rounded-2xl group-hover:scale-110 transition-transform">
+                          {stat.icon}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Ringkasan Pajak & Laporan Keuangan */}
-                  <div className="bg-[#0f1423] border border-slate-800 p-6 rounded-[2rem] shadow-xl space-y-4">
-                    <h4 className="font-bold text-sm text-slate-200">Laporan Pajak & Keuangan</h4>
-                    <div className="space-y-3 text-xs text-slate-400">
-                      <div className="flex justify-between">
-                        <span>Total Penjualan Bersih:</span>
-                        <span className="text-white font-bold">
-                          Rp {Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) / 1.11).toLocaleString('id-ID')}
+                        <span className={`text-[10px] font-bold ${stat.up ? 'text-emerald-400 bg-emerald-400/10' : 'text-red-400 bg-red-400/10'} px-2.5 py-1 rounded-full`}>
+                          {stat.trend}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Pajak Keluaran (PPN 11%):</span>
-                        <span className="text-white font-bold">
-                          Rp {Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) * 0.11).toLocaleString('id-ID')}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total Penjualan Kotor (PPN Inc.):</span>
-                        <span className="text-white font-bold">
-                          Rp {transactions.reduce((s,t) => s + Number(t.total), 0).toLocaleString('id-ID')}
-                        </span>
-                      </div>
-                      <div className="h-px bg-slate-800/80 my-2"></div>
-                      <div className="flex justify-between text-sm">
-                        <span className="font-bold text-slate-300">Total Pendapatan Pajak Terlapor:</span>
-                        <span className="text-purple-400 font-black">
-                          Rp {Math.round(transactions.reduce((s,t) => s + Number(t.total), 0) * 0.11).toLocaleString('id-ID')}
-                        </span>
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">{stat.label}</p>
+                        <h3 className="text-xl font-bold mt-0.5">{stat.value}</h3>
                       </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              )}
+
+                {/* ADDITIONAL REPORTS SECTION FOR PRO & ENTERPRISE */}
+                {!plan.toLowerCase().includes('basic') & (
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Grafik Penjualan Dinamis */}
+                    <div className="bg-[#0f1423] border border-slate-800 p-6 rounded-[2rem] shadow-xl">
+                      <h4 className="font-bold text-sm text-slate-200 mb-4">Grafik Penjualan ({reportPeriod})</h4>
+                      <div className="h-48 flex items-end gap-3 pt-6 px-4">
+                        {chartData.values.map((val, idx) => {
+                          const maxVal = Math.max(...chartData.values, 1);
+                          const heightPercent = Math.min(100, Math.round((val / maxVal) * 100));
+                          return (
+                            <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end min-w-0">
+                              <span className="text-[9px] text-slate-400 font-bold mb-1 truncate max-w-full">
+                                {val > 0 ? `Rp ${Math.round(val/1000)}k` : '0'}
+                              </span>
+                              <div 
+                                className="w-full bg-purple-600/20 hover:bg-purple-600 rounded-t-lg transition-all" 
+                                style={{ height: `${Math.max(5, heightPercent)}%` }}
+                                title={`Total: Rp ${val.toLocaleString()}`}
+                              ></div>
+                              <span className="text-[9px] text-slate-500 font-bold truncate max-w-full block text-center mt-1">{chartData.labels[idx]}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Ringkasan Pajak & Laporan Keuangan */}
+                    <div className="bg-[#0f1423] border border-slate-800 p-6 rounded-[2rem] shadow-xl space-y-4">
+                      <h4 className="font-bold text-sm text-slate-200">Laporan Pajak &amp; Keuangan</h4>
+                      <div className="space-y-3 text-xs text-slate-400">
+                        <div className="flex justify-between">
+                          <span>Total Penjualan Bersih (DPP):</span>
+                          <span className="text-white font-bold">
+                            Rp {penjualanBersih.toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Pajak Keluaran (PPN 11%):</span>
+                          <span className="text-white font-bold">
+                            Rp {estimasiPajak.toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total Penjualan Kotor (PPN Inc.):</span>
+                          <span className="text-white font-bold">
+                            Rp {totalPendapatan.toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                        <div className="h-px bg-slate-800/80 my-2"></div>
+                        <div className="flex justify-between text-sm">
+                          <span className="font-bold text-slate-300">Total Pendapatan Pajak Terlapor:</span>
+                          <span className="text-purple-400 font-black">
+                            Rp {estimasiPajak.toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
             </div>
           )}
 
@@ -1804,8 +2152,216 @@ const ManagerDashboard = ({ onBack }) => {
             </div>
           )}
 
+          {/* TAB KELOLA ROLE */}
+          {activeTab === 'role' && (() => {
+            const isOwner = !user?.admin_id; // Admin utama (owner) bisa edit/tambah/hapus
+            return (
+              <div className="animate-in fade-in space-y-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Kelola Role & Hak Akses</h3>
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      {isOwner ? 'Anda dapat menambah, mengubah, dan menghapus role' : 'Daftar role yang tersedia di sistem'}
+                    </p>
+                  </div>
+                  {isOwner && (
+                    <button
+                      onClick={() => { setRoleForm({ name: '', permissions: [] }); setEditingRole(null); setShowAddRoleModal(true); }}
+                      className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-2xl font-bold transition shadow-lg text-white"
+                    >
+                      <Plus size={18} /> Tambah Role
+                    </button>
+                  )}
+                </div>
+
+                {rolesLoading ? (
+                  <div className="text-center py-16 text-slate-500">Memuat data role...</div>
+                ) : roles.length === 0 ? (
+                  <div className="bg-[#0f1423] border border-slate-800 rounded-3xl p-16 text-center">
+                    <ShieldCheck size={48} className="mx-auto mb-4 text-slate-700" />
+                    <h4 className="text-lg font-bold text-slate-400 mb-2">Belum Ada Role</h4>
+                    <p className="text-slate-500 text-sm mb-4">
+                      {isOwner
+                        ? 'Klik "Tambah Role" untuk membuat role pertama.'
+                        : 'Hubungi Admin untuk menambahkan role.'}
+                    </p>
+                    {isOwner && (
+                      <button
+                        onClick={() => { setRoleForm({ name: '', permissions: [] }); setEditingRole(null); setShowAddRoleModal(true); }}
+                        className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition"
+                      >
+                        + Tambah Role
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {roles.map(role => {
+                      const perms = Array.isArray(role.permissions) ? role.permissions : [];
+                      const isDefault = role.is_default === 1;
+                      return (
+                        <div key={role.id} className="bg-[#0f1423] border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col gap-4 hover:border-purple-500/30 transition-all group">
+                          {/* Header */}
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-purple-500/10 rounded-2xl flex items-center justify-center">
+                                <ShieldCheck size={18} className="text-purple-400" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-white">{role.name}</h4>
+                                {isDefault && (
+                                  <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold px-2 py-0.5 rounded-full">
+                                    🔒 Default
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {isOwner && (
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handleOpenEditRole(role)}
+                                  className="p-2 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10 rounded-xl transition"
+                                  title="Edit Role"
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                                {!isDefault && (
+                                  <button
+                                    onClick={() => handleDeleteRole(role.id)}
+                                    className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition"
+                                    title="Hapus Role"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Permissions */}
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2">
+                              {perms.length} Hak Akses
+                            </p>
+                            {perms.length === 0 ? (
+                              <p className="text-xs text-slate-600 italic">Tidak ada hak akses</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {perms.map(permId => {
+                                  const permMeta = ALL_PERMISSIONS.find(p => p.id === permId);
+                                  return (
+                                    <span
+                                      key={permId}
+                                      className="text-[10px] font-bold px-2 py-1 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                                    >
+                                      {permMeta ? permMeta.label : permId}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Info card untuk Manager (non-owner) */}
+                {!isOwner && (
+                  <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-5 flex items-start gap-3">
+                    <ShieldCheck size={18} className="text-blue-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold text-blue-300">Mode Baca Saja</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Sebagai Manager, Anda dapat melihat daftar role yang tersedia. Untuk menambah atau mengubah role, hubungi Admin Utama.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
         </div>
       </main>
+
+      {/* MODAL TAMBAH / EDIT ROLE */}
+      {(showAddRoleModal || showEditRoleModal) && (() => {
+        const isEdit = showEditRoleModal;
+        const permGroups = [...new Set(ALL_PERMISSIONS.map(p => p.group))];
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+            <div className="bg-[#0f1423] border border-slate-800 w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-500/10 rounded-2xl flex items-center justify-center">
+                    <ShieldCheck size={20} className="text-purple-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">{isEdit ? 'Edit Role' : 'Tambah Role Baru'}</h3>
+                </div>
+                <button onClick={() => { setShowAddRoleModal(false); setShowEditRoleModal(false); setRoleForm({ name: '', permissions: [] }); setEditingRole(null); }} className="text-slate-500 hover:text-white transition"><X size={24} /></button>
+              </div>
+
+              <form onSubmit={handleSaveRole} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Nama Role</label>
+                  <input
+                    type="text"
+                    value={roleForm.name}
+                    onChange={e => setRoleForm(prev => ({ ...prev, name: e.target.value }))}
+                    disabled={isEdit && editingRole?.is_default === 1}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder="Contoh: Supervisor"
+                    required
+                  />
+                  {isEdit && editingRole?.is_default === 1 && (
+                    <p className="text-[10px] text-amber-400 mt-1">⚠️ Nama role bawaan sistem tidak dapat diubah</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Hak Akses (Permission)</label>
+                  <div className="space-y-4">
+                    {permGroups.map(group => (
+                      <div key={group} className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/60">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">{group}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {ALL_PERMISSIONS.filter(p => p.group === group).map(perm => {
+                            const checked = roleForm.permissions.includes(perm.id);
+                            return (
+                              <button
+                                key={perm.id}
+                                type="button"
+                                onClick={() => togglePermission(perm.id)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                  checked
+                                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
+                                    : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
+                                }`}
+                              >
+                                <span>{checked ? '✓' : '+'}</span> {perm.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full mt-4 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-purple-600/20 transition-all active:scale-[0.98]"
+                >
+                  {loading ? 'Menyimpan...' : (isEdit ? 'Simpan Perubahan' : 'Tambah Role')}
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODAL CHECKOUT LANGGANAN (NEW & HIGH FIDELITY) */}
       {showCheckoutModal && selectedPlanData && (

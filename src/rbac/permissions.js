@@ -5,9 +5,9 @@
  * semua definisi hak akses di seluruh aplikasi WarungPOS.
  *
  * 4 Role sesuai ketentuan:
- *   Manager  — KPI, Laporan, Kelola Staf, Langganan
- *   Operator — Kelola Produk & Stok
- *   Kasir    — Transaksi POS, Pesanan Masuk
+ *   Manager  — Lihat Produk/Stok, Laporan, Kelola Staf, Kelola Role, Langganan
+ *   Operator — Kelola Produk & Stok (Tambah/Edit/Hapus)
+ *   Kasir    — Transaksi POS, Pesanan Masuk, Riwayat
  *   Konsumen — Katalog, Keranjang, Checkout, Pesanan Saya
  * =========================================================
  */
@@ -65,8 +65,10 @@ export const ROLE_PERMISSIONS = {
   ],
   Manager: [
     'dashboard',
+    'produk',
     'laporan',
     'staf',
+    'role',
     'paket',
   ],
   Operator: [

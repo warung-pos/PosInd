@@ -35,8 +35,6 @@ const FakeQRCode = ({ invoice }) => (
 
 const ConsumerDashboard = ({ onBack }) => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const plan = user.plan || '';
-  const canUseQRIS = plan.toLowerCase().includes('pro') || plan.toLowerCase().includes('enterprise');
 
   const [activeTab, setActiveTab] = useState('katalog');
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -534,9 +532,8 @@ const ConsumerDashboard = ({ onBack }) => {
                   {/* SmartBank QRIS */}
                   <div className="relative">
                     <button
-                      onClick={() => canUseQRIS && setPaymentMethod('qris')}
-                      disabled={!canUseQRIS}
-                      className={`w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all ${!canUseQRIS ? 'border-slate-800 opacity-50 cursor-not-allowed bg-slate-800/20' : paymentMethod === 'qris' ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 hover:border-slate-600 bg-slate-800/40'}`}
+                      onClick={() => setPaymentMethod('qris')}
+                      className={`w-full flex items-center gap-3 p-3.5 rounded-xl border transition-all ${paymentMethod === 'qris' ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 hover:border-slate-600 bg-slate-800/40'}`}
                     >
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${paymentMethod === 'qris' ? 'bg-emerald-600' : 'bg-slate-700'}`}>
                         <QrCode size={15} className="text-white" />
@@ -544,9 +541,6 @@ const ConsumerDashboard = ({ onBack }) => {
                       <div className="text-left flex-1">
                         <div className="flex items-center gap-2">
                           <p className={`text-sm font-bold ${paymentMethod === 'qris' ? 'text-white' : 'text-slate-300'}`}>SmartBank (QRIS)</p>
-                          {!canUseQRIS && (
-                            <span className="text-[9px] font-extrabold bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded uppercase">Pro+</span>
-                          )}
                         </div>
                         <p className="text-[11px] text-slate-500">Scan QR, bayar langsung di tempat</p>
                       </div>

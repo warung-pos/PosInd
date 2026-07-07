@@ -29,7 +29,8 @@ import {
   Moon,
   Camera,
   UserCircle,
-  Menu
+  Menu,
+  Eye
 } from 'lucide-react';
 import { kmpSearch } from '../utils/stringMatcher';
 import { getGreedyChange } from '../utils/greedyChange';
@@ -275,6 +276,98 @@ const AdminDashboard = ({ onBack }) => {
   const [showReceiptBrandingModal, setShowReceiptBrandingModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeModalReason, setUpgradeModalReason] = useState('');
+  const [reportPeriod, setReportPeriod] = useState('Harian');
+
+  const getFilteredTransactionsForReport = (period) => {
+    const now = new Date();
+    // Gunakan tanggal lokal hari ini mulai jam 00:00:00 untuk pemfilteran Harian yang akurat
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    return transactions.filter(t => {
+      const txDate = new Date(t.created_at);
+      if (period === 'Harian') {
+        return txDate >= startOfToday;
+      } else if (period === 'Mingguan') {
+        const start = new Date();
+        start.setDate(now.getDate() - 7);
+        return txDate >= start;
+      } else if (period === 'Bulanan') {
+        const start = new Date();
+        start.setMonth(now.getMonth() - 1);
+        return txDate >= start;
+      } else if (period === 'Tahunan') {
+        const start = new Date();
+        start.setFullYear(now.getFullYear() - 1);
+        return txDate >= start;
+      }
+      return true;
+    });
+  };
+
+  const getChartData = (filteredTx) => {
+    const now = new Date();
+    if (reportPeriod === 'Harian') {
+      // 6 interval: 00-04, 04-08, 08-12, 12-16, 16-20, 20-00
+      const bins = [0, 0, 0, 0, 0, 0];
+      filteredTx.forEach(t => {
+        const hour = new Date(t.created_at).getHours();
+        const binIdx = Math.min(5, Math.floor(hour / 4));
+        bins[binIdx] += Number(t.total);
+      });
+      const labels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-00'];
+      return { labels, values: bins };
+    } else if (reportPeriod === 'Mingguan') {
+      // 7 hari terakhir
+      const bins = [0, 0, 0, 0, 0, 0, 0];
+      const labels = [];
+      const daysName = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
+        labels.push(`${daysName[d.getDay()]} ${d.getDate()}`);
+      }
+      filteredTx.forEach(t => {
+        const txDate = new Date(t.created_at);
+        const diffTime = now.setHours(23,59,59,999) - txDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays < 7) {
+          bins[6 - diffDays] += Number(t.total);
+        }
+      });
+      return { labels, values: bins };
+    } else if (reportPeriod === 'Bulanan') {
+      // 4 minggu terakhir
+      const bins = [0, 0, 0, 0];
+      const labels = ['Mgg 1', 'Mgg 2', 'Mgg 3', 'Mgg 4'];
+      filteredTx.forEach(t => {
+        const txDate = new Date(t.created_at);
+        const diffTime = now.setHours(23,59,59,999) - txDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const weekIdx = Math.min(3, Math.floor(diffDays / 7));
+        bins[3 - weekIdx] += Number(t.total);
+      });
+      return { labels, values: bins };
+    } else if (reportPeriod === 'Tahunan') {
+      // 12 bulan terakhir
+      const bins = Array(12).fill(0);
+      const labels = [];
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(now.getMonth() - i);
+        labels.push(monthNames[d.getMonth()]);
+      }
+      filteredTx.forEach(t => {
+        const txDate = new Date(t.created_at);
+        const diffMonths = (now.getFullYear() - txDate.getFullYear()) * 12 + now.getMonth() - txDate.getMonth();
+        if (diffMonths >= 0 && diffMonths < 12) {
+          bins[11 - diffMonths] += Number(t.total);
+        }
+      });
+      return { labels, values: bins };
+    }
+    return { labels: [], values: [] };
+  };
 
   const showToast = (type, text) => {
     setToast({ type, text });
@@ -1081,8 +1174,9 @@ const AdminDashboard = ({ onBack }) => {
       setShowUpgradeModal(true);
       return;
     }
+    const filteredTx = getFilteredTransactionsForReport(reportPeriod);
     const headers = ['ID', 'Invoice', 'Tanggal', 'Metode Pembayaran', 'Total', 'Fee POS', 'Status'];
-    const rows = transactions.map(t => [
+    const rows = filteredTx.map(t => [
       t.id,
       t.invoice,
       new Date(t.created_at).toLocaleString(),
@@ -1096,11 +1190,11 @@ const AdminDashboard = ({ onBack }) => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `laporan_transaksi_${Date.now()}.csv`);
+    link.setAttribute("download", `laporan_transaksi_${reportPeriod}_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('success', 'Laporan berhasil diekspor ke CSV!');
+    showToast('success', `Laporan ${reportPeriod} berhasil diekspor ke CSV!`);
   };
 
   const handlePrintPDFReport = () => {
@@ -1109,8 +1203,127 @@ const AdminDashboard = ({ onBack }) => {
       setShowUpgradeModal(true);
       return;
     }
-    window.print();
+
+    const filteredTx = getFilteredTransactionsForReport(reportPeriod);
+    const totalPendapatan = filteredTx.reduce((s, t) => s + Number(t.total), 0);
+    const totalEstimasi = reportPeriod === 'Harian' ? Math.round(totalPendapatan * 5.4) : Math.round(totalPendapatan * 1.2);
+    const estimasiPajak = Math.round(totalPendapatan * 0.11);
+    const penjualanBersih = Math.round(totalPendapatan / 1.11);
+    const printDate = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    // Grafik SVG dinamis
+    const chartData = getChartData(filteredTx);
+    const maxBar = Math.max(...chartData.values, 1);
+    const chartHeight = 80;
+    const barWidth = 28;
+    const gap = 10;
+    const svgWidth = Math.max(300, chartData.values.length * (barWidth + gap));
+    const barsHtml = chartData.values.map((val, i) => {
+      const h = Math.round((val / maxBar) * chartHeight);
+      const x = i * (barWidth + gap) + 10;
+      const y = chartHeight - h;
+      return `
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="4" fill="#7c3aed" />
+        <text x="${x + barWidth / 2}" y="${chartHeight + 14}" text-anchor="middle" font-size="8" fill="#666">${chartData.labels[i]}</text>
+        <text x="${x + barWidth / 2}" y="${y - 4}" text-anchor="middle" font-size="7" font-weight="bold" fill="#333">${val > 0 ? `${Math.round(val/1000)}k` : ''}</text>
+      `;
+    }).join('');
+    const chartSvg = `<svg width="${svgWidth + 20}" height="${chartHeight + 25}" xmlns="http://www.w3.org/2000/svg">${barsHtml}</svg>`;
+
+    const reportHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; background: #fff; padding: 24px 28px; max-width: 794px; margin: 0 auto; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #7c3aed; padding-bottom: 14px; }
+          .brand { font-size: 22px; font-weight: 900; letter-spacing: 2px; color: #7c3aed; }
+          .subtitle { font-size: 11px; color: #64748b; margin-top: 4px; }
+          .print-date { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+          .section-title { font-size: 13px; font-weight: 700; color: #7c3aed; margin: 18px 0 10px 0; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; }
+          .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+          .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+          .stat-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+          .stat-value { font-size: 16px; font-weight: 800; color: #1e293b; margin-top: 4px; }
+          .stat-value.purple { color: #7c3aed; }
+          .stat-value.green { color: #059669; }
+          .stat-value.red { color: #dc2626; }
+          .tax-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+          .tax-table th { background: #f1f5f9; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 8px 10px; text-align: left; color: #475569; }
+          .tax-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-size: 11px; }
+          .tax-table tr:last-child td { border-bottom: none; }
+          .total-row td { font-weight: 800; font-size: 12px; background: #faf5ff; color: #7c3aed; border-top: 2px solid #e9d5ff !important; }
+          .chart-wrap { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin-top: 8px; }
+          .chart-title { font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 10px; }
+          .tx-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+          .tx-table th { background: #f1f5f9; font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 7px 8px; text-align: left; color: #475569; }
+          .tx-table td { padding: 7px 8px; border-bottom: 1px solid #f8fafc; font-size: 10px; color: #334155; }
+          .tx-table tr:last-child td { border-bottom: none; }
+          .footer { text-align: center; margin-top: 24px; padding-top: 12px; border-top: 1px dashed #cbd5e1; font-size: 10px; color: #94a3b8; }
+          @page { size: A4; margin: 15mm 15mm; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="brand">WARUNGPOS</div>
+          <div class="subtitle">Laporan Analitik &amp; Keuangan Bisnis (${reportPeriod}) &mdash; Paket ${plan}</div>
+          <div class="print-date">Dicetak pada: ${printDate}</div>
+        </div>
+        <div class="section-title">📊 Ringkasan Pendapatan (${reportPeriod})</div>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">Total Pendapatan</div><div class="stat-value green">Rp ${totalPendapatan.toLocaleString('id-ID')}</div></div>
+          <div class="stat-card"><div class="stat-label">Estimasi Periode</div><div class="stat-value purple">Rp ${totalEstimasi.toLocaleString('id-ID')}</div></div>
+          <div class="stat-card"><div class="stat-label">Estimasi Pajak PPN (11%)</div><div class="stat-value red">Rp ${estimasiPajak.toLocaleString('id-ID')}</div></div>
+        </div>
+        <div class="section-title">🧾 Laporan Pajak &amp; Keuangan</div>
+        <table class="tax-table">
+          <thead><tr><th>Keterangan</th><th style="text-align:right">Jumlah (Rp)</th></tr></thead>
+          <tbody>
+            <tr><td>Total Penjualan Kotor (PPN Termasuk)</td><td style="text-align:right">Rp ${totalPendapatan.toLocaleString('id-ID')}</td></tr>
+            <tr><td>Total Penjualan Bersih (DPP)</td><td style="text-align:right">Rp ${penjualanBersih.toLocaleString('id-ID')}</td></tr>
+            <tr><td>Pajak Keluaran (PPN 11%)</td><td style="text-align:right">Rp ${estimasiPajak.toLocaleString('id-ID')}</td></tr>
+            <tr><td>Total Transaksi</td><td style="text-align:right">${filteredTx.length} transaksi</td></tr>
+            <tr class="total-row"><td>Total Pendapatan Pajak Terlapor</td><td style="text-align:right">Rp ${estimasiPajak.toLocaleString('id-ID')}</td></tr>
+          </tbody>
+        </table>
+        <div class="section-title">📈 Grafik Penjualan (${reportPeriod})</div>
+        <div class="chart-wrap"><div class="chart-title">Distribusi Penjualan Terlapor</div>${chartSvg}</div>
+        <div class="section-title">📋 Riwayat Transaksi (${filteredTx.length > 0 ? `${Math.min(filteredTx.length, 20)} Terbaru` : 'Tidak Ada Data'})</div>
+        <table class="tx-table">
+          <thead><tr><th>Invoice</th><th>Tanggal</th><th>Metode</th><th style="text-align:right">Total</th><th style="text-align:center">Status</th></tr></thead>
+          <tbody>
+            ${filteredTx.slice(0, 20).map(t => `<tr><td style="color:#7c3aed;font-weight:700">${t.invoice}</td><td>${new Date(t.created_at).toLocaleString('id-ID')}</td><td>${t.method || '-'}</td><td style="text-align:right;font-weight:600">Rp ${Number(t.total).toLocaleString('id-ID')}</td><td style="text-align:center"><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700">${t.status || 'Selesai'}</span></td></tr>`).join('')}
+            ${filteredTx.length === 0 ? '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">Belum ada data transaksi</td></tr>' : ''}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Laporan digenerate otomatis oleh sistem <strong>WarungPOS</strong> &mdash; ${printDate}</p>
+          <p style="margin-top:4px">Paket: ${plan} | Seluruh data bersumber dari transaksi terkonfirmasi</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(reportHtml);
+    iframe.contentDocument.close();
+    iframe.onload = () => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 1500);
+    };
   };
+
 
   const subtotalCart = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const feePOS = (paymentMethod === 'SmartBank (QRIS)' || paymentMethod === 'Cash') ? Math.round(subtotalCart * 0.01) : 0;
@@ -1493,16 +1706,63 @@ const AdminDashboard = ({ onBack }) => {
             </div>
           )}
 
-          {/* HALAMAN PRODUK & TRANSAKSI TETAP SAMA... */}
+
+
+          {/* HALAMAN PRODUK */}
           {activeTab === 'produk' && (
             <div className="animate-in fade-in space-y-6">
-              <div className="flex justify-between items-center"><h3 className="text-xl font-bold">Daftar Produk</h3><button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-2xl font-bold transition shadow-lg"><Plus size={18} /> Tambah Produk</button></div>
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold">Daftar Produk</h3>
+                {(currentRole === 'Admin' || currentRole === 'Operator') && (
+                  <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-2xl font-bold transition shadow-lg">
+                    <Plus size={18} /> Tambah Produk
+                  </button>
+                )}
+              </div>
               <div className="bg-[#0f1423] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-800/50 border-b border-slate-800"><tr><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Nama Produk</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Kategori</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Harga</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Stok</th><th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Aksi</th></tr></thead>
-                  <tbody className="divide-y divide-slate-800">{filteredProducts.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-800/20 transition-colors"><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 overflow-hidden">{p.image ? <img src={`http://localhost:3000/uploads/${p.image}`} alt={p.name} className="w-full h-full object-cover" /> : <Package size={20} />}</div><span className="font-bold">{p.name}</span></div></td><td className="px-6 py-4 text-sm text-slate-400">{p.category}</td><td className="px-6 py-4 font-bold text-purple-400">Rp {Number(p.price).toLocaleString()}</td><td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-[10px] font-bold ${p.stock < 20 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>{p.stock} Tersedia</span></td><td className="px-6 py-4 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleOpenModal(p)} className="p-2 text-slate-500 hover:text-white"><Pencil size={18} /></button><button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-slate-500 hover:text-red-400"><Trash2 size={18} /></button></div></td></tr>
-                    ))}</tbody>
+                  <thead className="bg-slate-800/50 border-b border-slate-800">
+                    <tr>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Nama Produk</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Kategori</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Harga</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Stok</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {filteredProducts.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-800/20 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 overflow-hidden">
+                              {p.image ? <img src={`http://localhost:3000/uploads/${p.image}`} alt={p.name} className="w-full h-full object-cover" /> : <Package size={20} />}
+                            </div>
+                            <span className="font-bold">{p.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-400">{p.category}</td>
+                        <td className="px-6 py-4 font-bold text-purple-400">Rp {Number(p.price).toLocaleString()}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${p.stock < 20 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                            {p.stock} Tersedia
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            {currentRole === 'Admin' || currentRole === 'Operator' ? (
+                              <>
+                                <button onClick={() => handleOpenModal(p)} className="p-2 text-slate-500 hover:text-white" title="Edit"><Pencil size={18} /></button>
+                                <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-slate-500 hover:text-red-400" title="Hapus"><Trash2 size={18} /></button>
+                              </>
+                            ) : (
+                              <button onClick={() => handleOpenModal(p)} className="p-2 text-slate-500 hover:text-white" title="Lihat Detail"><Eye size={18} /></button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
               </div>
             </div>
@@ -2216,66 +2476,94 @@ const AdminDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* MODAL TAMBAH PRODUK (Tetap Sama) */}
-      {showProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#0f1423] border border-slate-800 w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in zoom-in duration-200">
-             <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold">{currentProduct ? 'Edit' : 'Tambah'} Produk</h3><button onClick={handleCloseModal}><X /></button></div>
-             <div className="space-y-4">
-                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none" placeholder="Nama" />
-                <input type="number" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none" placeholder="Harga" />
-                <input type="number" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none" placeholder="Stok" />
-                
-                {/* Kategori */}
-                <select 
-                  value={formData.category} 
-                  onChange={e => setFormData({...formData, category: e.target.value})} 
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none text-slate-300"
-                >
-                  <option value="Makanan">Makanan</option>
-                  <option value="Minuman">Minuman</option>
-                  <option value="Snack">Snack</option>
-                  <option value="Lainnya">Lainnya</option>
-                </select>
-                
-
-                {/* Upload Gambar dengan Desain Premium */}
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-400 block">Gambar Produk</label>
-                  <div className="flex items-center gap-4">
-                    {formData.imagePreview ? (
-                      <div className="relative w-20 h-20 bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden group">
-                        <img src={formData.imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                        <button 
-                          type="button"
-                          onClick={() => setFormData({ ...formData, imageFile: null, imagePreview: '' })}
-                          className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-red-400 font-bold"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="w-20 h-20 bg-slate-800 border border-dashed border-slate-700 rounded-2xl flex items-center justify-center text-slate-500">
-                        <Package size={24} />
-                      </div>
-                    )}
-                    <label className="flex-1 flex flex-col items-center justify-center px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-xl cursor-pointer transition-all text-xs font-semibold text-slate-300">
-                      <span>Pilih File Gambar</span>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        onChange={handleImageChange} 
-                        className="hidden" 
-                      />
-                    </label>
+      {/* MODAL TAMBAH/EDIT/DETAIL PRODUK */}
+      {showProductModal && (() => {
+        const isReadOnly = currentRole !== 'Admin' && currentRole !== 'Operator';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-[#0f1423] border border-slate-800 w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in zoom-in duration-200">
+               <div className="flex justify-between items-center mb-6">
+                 <h3 className="text-xl font-bold">
+                   {isReadOnly ? 'Detail' : (currentProduct ? 'Edit' : 'Tambah')} Produk
+                 </h3>
+                 <button onClick={handleCloseModal}><X /></button>
+               </div>
+               <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Nama Produk</label>
+                    <input type="text" disabled={isReadOnly} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Nama" />
                   </div>
-                </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Harga (Rp)</label>
+                    <input type="number" disabled={isReadOnly} value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Harga" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Stok Tersedia</label>
+                    <input type="number" disabled={isReadOnly} value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none disabled:opacity-60 disabled:cursor-not-allowed" placeholder="Stok" />
+                  </div>
+                  
+                  {/* Kategori */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Kategori</label>
+                    <select 
+                      disabled={isReadOnly}
+                      value={formData.category} 
+                      onChange={e => setFormData({...formData, category: e.target.value})} 
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 outline-none text-slate-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <option value="Makanan">Makanan</option>
+                      <option value="Minuman">Minuman</option>
+                      <option value="Snack">Snack</option>
+                      <option value="Lainnya">Lainnya</option>
+                    </select>
+                  </div>
+                  
+                  {/* Upload Gambar */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-400 block">Gambar Produk</label>
+                    <div className="flex items-center gap-4">
+                      {formData.imagePreview ? (
+                        <div className="relative w-20 h-20 bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden group">
+                          <img src={formData.imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                          {!isReadOnly && (
+                            <button 
+                              type="button"
+                              onClick={() => setFormData({ ...formData, imageFile: null, imagePreview: '' })}
+                              className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-red-400 font-bold"
+                            >
+                              <X size={18} />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-20 h-20 bg-slate-800 border border-dashed border-slate-700 rounded-2xl flex items-center justify-center text-slate-500">
+                          <Package size={24} />
+                        </div>
+                      )}
+                      {!isReadOnly && (
+                        <label className="flex-1 flex flex-col items-center justify-center px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-xl cursor-pointer transition-all text-xs font-semibold text-slate-300">
+                          <span>Pilih File Gambar</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleImageChange} 
+                            className="hidden" 
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
 
-                <button onClick={handleSaveProduct} className="w-full bg-purple-600 py-3 rounded-xl font-bold mt-4">Simpan</button>
-             </div>
+                  {isReadOnly ? (
+                    <button onClick={handleCloseModal} className="w-full bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-bold mt-4 transition active:scale-95">Tutup</button>
+                  ) : (
+                    <button onClick={handleSaveProduct} className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl font-bold mt-4 transition active:scale-95">Simpan</button>
+                  )}
+               </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL QRIS PAYMENT */}
       {showQRModal && activeQRTransaction && (

@@ -17,7 +17,7 @@ try {
     
     if (roles.length === 0) {
       const defaultRoles = [
-        { name: 'Admin',    permissions: '["dashboard","produk","transaksi","riwayat","laporan","staf","paket"]', is_default: 1 },
+        { name: 'Admin',    permissions: '["dashboard","produk","transaksi","pesanan","riwayat","laporan","staf","role","paket"]', is_default: 1 },
         { name: 'Kasir',    permissions: '["dashboard","transaksi","riwayat"]', is_default: 1 },
         { name: 'Operator', permissions: '["dashboard","produk"]', is_default: 1 }
       ];
