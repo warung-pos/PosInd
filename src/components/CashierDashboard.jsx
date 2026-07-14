@@ -29,7 +29,9 @@ import {
   Moon,
   Camera,
   UserCircle,
-  Menu
+  Menu,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { kmpSearch } from '../utils/stringMatcher';
 import { getGreedyChange } from '../utils/greedyChange';
@@ -74,7 +76,7 @@ const pricingPlans = [
       { text: 'Laporan harian & mingguan', included: true },
       { text: 'Cetak struk (thermal)', included: true },
       { text: 'Pembayaran Cash', included: true },
-      { text: 'Pembayaran QRIS (Midtrans)', included: true },
+      { text: 'Pembayaran QRIS (SmartBank)', included: true },
       { text: 'Laporan pajak & keuangan', included: true },
       { text: 'Multi cabang', included: false },
       { text: 'Export laporan (Excel/PDF)', included: true },
@@ -97,7 +99,7 @@ const pricingPlans = [
       { text: 'Laporan real-time & analitik', included: true },
       { text: 'Cetak struk (thermal)', included: true },
       { text: 'Pembayaran Cash', included: true },
-      { text: 'Pembayaran QRIS (Midtrans)', included: true },
+      { text: 'Pembayaran QRIS (SmartBank)', included: true },
       { text: 'Laporan pajak & keuangan', included: true },
       { text: 'Multi cabang (unlimited)', included: true },
       { text: 'Export laporan (Excel/PDF)', included: true },
@@ -142,7 +144,7 @@ const CashierDashboard = ({ onBack }) => {
   const [currentProduct, setCurrentProduct] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Midtrans QRIS & Invoice States
+  // SmartBank Payment States
   const [showQRModal, setShowQRModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [activeQRTransaction, setActiveQRTransaction] = useState(null);
@@ -234,6 +236,8 @@ const CashierDashboard = ({ onBack }) => {
   const [toast, setToast] = useState(null);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMsg, setPasswordMsg] = useState({ type: '', text: '' });
+  const [showPasswordFields, setShowPasswordFields] = useState({ oldPassword: false, newPassword: false, confirmPassword: false });
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [accountSettings, setAccountSettings] = useState(() => {
     try { return JSON.parse(localStorage.getItem('accountSettings') || '{"notifications":true,"kasirSound":false,"language":"id","showWelcome":true}'); }
     catch { return { notifications: true, kasirSound: false, language: 'id', showWelcome: true }; }
@@ -507,7 +511,7 @@ const CashierDashboard = ({ onBack }) => {
         });
       }, 1000);
 
-      // Polling Status Midtrans
+      // Polling Status SmartBank
       pollInterval = setInterval(async () => {
         try {
           const res = await fetch(`http://localhost:3000/api/pos/status/${activeQRTransaction.invoice}`);
@@ -774,8 +778,7 @@ const CashierDashboard = ({ onBack }) => {
             invoice: data.invoice,
             total: data.total,
             fee_pos: data.fee_pos,
-            qrisUrl: data.qrisUrl,
-            qrString: data.qrString,
+            qrPayload: data.qrPayload, // QR string dari SmartBank (null jika belum terhubung)
             items: [...cart],
             method: 'SmartBank (QRIS)',
             status: 'Pending',
@@ -1713,7 +1716,7 @@ const CashierDashboard = ({ onBack }) => {
                           key={m} 
                           onClick={() => {
                             if (isLocked) {
-                              setUpgradeModalReason('Pembayaran QRIS otomatis (Midtrans) hanya tersedia di paket Pro & Enterprise.');
+                              setUpgradeModalReason('Pembayaran SmartBank (QRIS) hanya tersedia di paket Pro & Enterprise.');
                               setShowUpgradeModal(true);
                               return;
                             }
@@ -2357,20 +2360,22 @@ const CashierDashboard = ({ onBack }) => {
             
             {/* QR Code Container */}
             <div className="bg-white p-6 rounded-3xl inline-block shadow-lg mx-auto mb-6">
-              {activeQRTransaction.qrString ? (
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(activeQRTransaction.qrString)}&size=220x220`} 
-                  alt="QRIS Code" 
-                  className="w-56 h-56 object-contain" 
-                />
-              ) : activeQRTransaction.qrisUrl ? (
-                <img 
-                  src={activeQRTransaction.qrisUrl} 
-                  alt="QRIS Code" 
-                  className="w-56 h-56 object-contain" 
+              {activeQRTransaction.qrPayload ? (
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(activeQRTransaction.qrPayload)}&size=220x220`}
+                  alt="QR Code SmartBank"
+                  className="w-56 h-56 object-contain"
                 />
               ) : (
-                <div className="w-56 h-56 bg-slate-100 flex items-center justify-center text-slate-500 font-bold">QRIS Gagal Di-load</div>
+                <div className="w-56 h-56 bg-slate-100 flex flex-col items-center justify-center gap-3 rounded-2xl">
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m8-8h-1M5 12H4m13.657-6.343l-.707.707M6.343 17.657l-.707.707M18.364 18.364l-.707-.707M6.343 6.343l-.707-.707" />
+                    </svg>
+                  </div>
+                  <p className="text-slate-500 text-xs font-semibold text-center px-3">Menunggu koneksi SmartBank</p>
+                  <p className="text-slate-400 text-[10px] text-center px-4">Gunakan tombol Simulasi di bawah untuk testing</p>
+                </div>
               )}
             </div>
 
@@ -2909,9 +2914,15 @@ const CashierDashboard = ({ onBack }) => {
               ].map(({ label, key, placeholder }) => (
                 <div key={key}>
                   <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">{label}</label>
-                  <input type="password" value={passwordForm[key]} onChange={(e) => setPasswordForm({...passwordForm, [key]: e.target.value})}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition"
-                    placeholder={placeholder} required />
+                  <div className="relative">
+                    <input type={showPasswordFields[key] ? "text" : "password"} value={passwordForm[key]} onChange={(e) => setPasswordForm({...passwordForm, [key]: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 pr-12 text-white focus:outline-none focus:border-purple-500 transition"
+                      placeholder={placeholder} required />
+                    <button type="button" onClick={() => setShowPasswordFields(prev => ({...prev, [key]: !prev[key]}))}
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-200 transition-colors">
+                      {showPasswordFields[key] ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
               ))}
 
@@ -2978,14 +2989,20 @@ const CashierDashboard = ({ onBack }) => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Password</label>
-                <input 
-                  type="password" 
-                  value={staffForm.password} 
-                  onChange={(e) => setStaffForm({...staffForm, password: e.target.value})}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm"
-                  placeholder="Min. 6 karakter" 
-                  required 
-                />
+                <div className="relative">
+                  <input 
+                    type={showStaffPassword ? "text" : "password"} 
+                    value={staffForm.password} 
+                    onChange={(e) => setStaffForm({...staffForm, password: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 pr-12 text-white focus:outline-none focus:border-purple-500 transition text-sm"
+                    placeholder="Min. 6 karakter" 
+                    required 
+                  />
+                  <button type="button" onClick={() => setShowStaffPassword(p => !p)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-200 transition-colors">
+                    {showStaffPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -3082,11 +3099,7 @@ const CashierDashboard = ({ onBack }) => {
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
-        /* Light mode structural overrides */
-        .bg-slate-100 aside, .bg-slate-100 .bg-\\[\\#0f1423\\] { background: #ffffff !important; }
-        .bg-slate-100 .border-slate-800 { border-color: #e2e8f0 !important; }
-        .bg-slate-100 .bg-slate-800\\/50 { background: rgba(226,232,240,0.6) !important; }
-        .bg-slate-100 .bg-slate-900 { background: #f8fafc !important; }
+        /* Light mode structural overrides moved to global index.css */
         @keyframes slide-in-from-bottom-4 { from { transform: translateY(1rem); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
         .animate-in.slide-in-from-left { animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }

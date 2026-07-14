@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { initiateSmartBankPayment, verifyConsumerPayment, checkSmartBankStatus } from '../services/paymentService.js';
 
 // 1. Bayar Transaksi
 export const payTransaction = async (req, res) => {
@@ -27,13 +28,15 @@ export const payTransaction = async (req, res) => {
         const invoice = `INV-${Date.now()}`;
 
         let paymentStatus = 'Selesai';
-        let qrisUrl = null;
-        let qrString = null;
+        let qrPayload = null;  // QR string dari SmartBank (diisi ketika API tersedia)
 
         if (payment_method === 'SmartBank (QRIS)') {
             paymentStatus = 'Pending';
-            qrString = '00020101021226660014ID.CO.QRIS.WWW0215ID10200234567890303000';
-            qrisUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qrString)}&size=220x220`;
+            // Panggil SmartBank melalui paymentService.
+            // Hasilnya akan berisi qrPayload ketika API SmartBank sudah terhubung.
+            // Saat ini mengembalikan null (placeholder) — lihat backend/services/paymentService.js
+            const sbResult = await initiateSmartBankPayment(invoice, total, { payment_method, user_id, branch });
+            qrPayload = sbResult.qrPayload;
         } else if (payment_method === 'Konsumen (Mandiri)') {
             paymentStatus = 'Pending';
         }
@@ -69,8 +72,9 @@ export const payTransaction = async (req, res) => {
             total,
             fee_pos,
             status: paymentStatus,
-            qrisUrl,
-            qrString
+            // qrPayload: string QR dari SmartBank untuk dirender frontend.
+            // Bernilai null selama SmartBank belum terhubung.
+            qrPayload,
         });
 
     } catch (err) {
@@ -85,7 +89,49 @@ export const checkTransactionStatus = async (req, res) => {
     try {
         const [rows] = await db.promise().query('SELECT * FROM transactions WHERE invoice = ?', [invoice]);
         if (rows.length === 0) return res.status(404).json({ message: 'Transaksi tidak ditemukan' });
-        res.json({ status: rows[0].status });
+        
+        let transaction = rows[0];
+
+        // Hook SmartBank: Jika status di database lokal masih Pending, tanyakan ke paymentService
+        if (transaction.status === 'Pending') {
+            const sbStatus = await checkSmartBankStatus(invoice);
+            if (sbStatus && sbStatus.status === 'Selesai') {
+                const [items] = await db.promise().query(
+                    'SELECT * FROM transaction_items WHERE transaction_id = ?',
+                    [transaction.id]
+                );
+
+                // Validasi kecukupan stok
+                let stockOk = true;
+                for (const item of items) {
+                    if (item.item_id) {
+                        const [prodRows] = await db.promise().query('SELECT stock FROM products WHERE id = ?', [item.item_id]);
+                        if (prodRows.length > 0 && prodRows[0].stock < item.qty) {
+                            stockOk = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (stockOk) {
+                    // Update status transaksi di database lokal ke Selesai
+                    await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
+
+                    // Potong stok produk
+                    for (const item of items) {
+                        if (item.item_id) {
+                            await db.promise().query(
+                                'UPDATE products SET stock = GREATEST(0, stock - ?), sales = sales + ? WHERE id = ?',
+                                [item.qty, item.qty, item.item_id]
+                            );
+                        }
+                    }
+                    transaction.status = 'Selesai';
+                }
+            }
+        }
+
+        res.json({ status: transaction.status });
     } catch (err) {
         console.error('POS Status Check Error:', err);
         res.json({ status: 'Pending' });
@@ -298,7 +344,7 @@ export const getPendingOrders = async (req, res) => {
     }
 };
 
-// 9. Konfirmasi Pembayaran QRIS Consumer (Simulasi SmartBank)
+// 9. Konfirmasi Pembayaran SmartBank Consumer
 export const confirmConsumerPayment = async (req, res) => {
     const { invoice } = req.body;
     if (!invoice) return res.status(400).json({ message: 'Invoice wajib diisi' });
@@ -330,6 +376,12 @@ export const confirmConsumerPayment = async (req, res) => {
             }
         }
 
+        // Panggil payment service untuk memverifikasi pembayaran dengan SmartBank
+        const verification = await verifyConsumerPayment(invoice);
+        if (!verification.success) {
+            return res.status(400).json({ message: 'Pembayaran belum diselesaikan atau tidak valid di SmartBank' });
+        }
+
         // Tandai sebagai Selesai
         await db.promise().query('UPDATE transactions SET status = ? WHERE invoice = ?', ['Selesai', invoice]);
 
@@ -343,7 +395,7 @@ export const confirmConsumerPayment = async (req, res) => {
             }
         }
 
-        res.json({ message: 'Pembayaran QRIS dikonfirmasi', invoice, status: 'Selesai' });
+        res.json({ message: 'Pembayaran SmartBank dikonfirmasi', invoice, status: 'Selesai' });
     } catch (err) {
         console.error('Confirm consumer payment error:', err);
         res.status(500).json({ message: 'Gagal mengkonfirmasi pembayaran' });

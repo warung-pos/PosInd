@@ -3,7 +3,7 @@ import { apiFetch as fetch } from '../utils/api';
 import {
   Store, ShoppingCart, ClipboardList, LogOut, Plus, Minus, Trash2,
   Search, CheckCircle2, Clock, X, UserCircle, ChevronRight, Menu,
-  Package, RefreshCw, QrCode, Smartphone, Wallet, Loader2
+  Package, RefreshCw, QrCode, Smartphone, Wallet, Loader2, Sun, Moon
 } from 'lucide-react';
 import { kmpSearch } from '../utils/stringMatcher';
 
@@ -33,8 +33,212 @@ const FakeQRCode = ({ invoice }) => (
   </svg>
 );
 
+// ── Helper: Download Digital Receipt as Image (Canvas) ──
+const downloadReceiptImage = (receipt) => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const width = 400;
+  const padding = 20;
+  const items = receipt.items || [];
+  
+  // Calculate height dynamically
+  const headerHeight = 160;
+  const itemHeight = 25;
+  const footerHeight = 180;
+  const height = headerHeight + (items.length * itemHeight) + footerHeight;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  // Background
+  ctx.fillStyle = '#1e293b'; // Slate-800 background
+  ctx.fillRect(0, 0, width, height);
+
+  // Outer border
+  ctx.strokeStyle = '#334155'; // Slate-700 border
+  ctx.lineWidth = 2;
+  ctx.strokeRect(5, 5, width - 10, height - 10);
+
+  // Shop Header
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText('WarungPOS', width / 2, 45);
+
+  ctx.fillStyle = '#94a3b8'; // Slate-400
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Struk Pembayaran Digital', width / 2, 65);
+
+  // Dashed line
+  ctx.strokeStyle = '#475569'; // Slate-600
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(padding, 80);
+  ctx.lineTo(width - padding, 80);
+  ctx.stroke();
+
+  // Invoice Details
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'normal 11px sans-serif';
+  ctx.fillText('Invoice:', padding, 105);
+  ctx.fillStyle = '#c084fc'; // Purple-400
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText(receipt.invoice, padding + 55, 105);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'normal 11px sans-serif';
+  ctx.fillText('Tanggal:', padding, 125);
+  ctx.fillStyle = '#ffffff';
+  const dateStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+  ctx.fillText(dateStr, padding + 55, 125);
+
+  // Dashed line
+  ctx.beginPath();
+  ctx.moveTo(padding, 140);
+  ctx.lineTo(width - padding, 140);
+  ctx.stroke();
+
+  // Items
+  let currentY = 160;
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText('Item', padding, currentY);
+  ctx.textAlign = 'right';
+  ctx.fillText('Total', width - padding, currentY);
+
+  ctx.font = 'normal 11px sans-serif';
+  ctx.fillStyle = '#f8fafc'; // slate-50
+  items.forEach(item => {
+    currentY += 25;
+    ctx.textAlign = 'left';
+    const nameText = item.name.length > 22 ? item.name.slice(0, 19) + '...' : item.name;
+    ctx.fillText(`${nameText} x${item.qty}`, padding, currentY);
+    ctx.textAlign = 'right';
+    ctx.fillText(`Rp ${(item.price * item.qty).toLocaleString('id-ID')}`, width - padding, currentY);
+  });
+
+  // Dashed line
+  currentY += 15;
+  ctx.beginPath();
+  ctx.moveTo(padding, currentY);
+  ctx.lineTo(width - padding, currentY);
+  ctx.stroke();
+
+  // Totals
+  const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const fee_pos = Math.round(subtotal * 0.01);
+  const total = subtotal + fee_pos;
+
+  currentY += 20;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('Subtotal:', padding, currentY);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(`Rp ${subtotal.toLocaleString('id-ID')}`, width - padding, currentY);
+
+  currentY += 20;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('Biaya POS (1%):', padding, currentY);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(`Rp ${fee_pos.toLocaleString('id-ID')}`, width - padding, currentY);
+
+  currentY += 25;
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('TOTAL:', padding, currentY);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Rp ${total.toLocaleString('id-ID')}`, width - padding, currentY);
+
+  // Dashed line
+  currentY += 15;
+  ctx.beginPath();
+  ctx.moveTo(padding, currentY);
+  ctx.lineTo(width - padding, currentY);
+  ctx.stroke();
+
+  // Status
+  currentY += 25;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 12px sans-serif';
+  if (receipt.paymentType === 'qris') {
+    ctx.fillStyle = '#34d399'; // Emerald-400
+    ctx.fillText('✓ LUNAS (SmartBank QRIS)', width / 2, currentY);
+  } else {
+    ctx.fillStyle = '#fbbf24'; // Amber-400
+    ctx.fillText('⏳ MENUNGGU PEMBAYARAN KASIR', width / 2, currentY);
+  }
+
+  currentY += 20;
+  ctx.fillStyle = '#64748b'; // Slate-500
+  ctx.font = 'italic 10px sans-serif';
+  ctx.fillText('Terima kasih atas pesanan Anda!', width / 2, currentY);
+
+  // Download
+  const image = canvas.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.download = `receipt-${receipt.invoice}.png`;
+  link.href = image;
+  link.click();
+};
+
+// ── Helper: Share Digital Receipt (Web Share API) ──
+const handleShareReceipt = async (receipt) => {
+  const items = receipt.items || [];
+  const itemsText = items.map(i => `- ${i.name} (x${i.qty}): Rp ${(i.price * i.qty).toLocaleString('id-ID')}`).join('\n');
+  const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const fee_pos = Math.round(subtotal * 0.01);
+  const total = subtotal + fee_pos;
+
+  const shareText = `🧾 STRUK BELANJA WARUNGPOS
+Invoice: ${receipt.invoice}
+Tanggal: ${new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+Status: ${receipt.paymentType === 'qris' ? 'LUNAS (SmartBank QRIS)' : 'Menunggu Kasir'}
+
+Rincian:
+${itemsText}
+
+Subtotal: Rp ${subtotal.toLocaleString('id-ID')}
+Biaya POS (1%): Rp ${fee_pos.toLocaleString('id-ID')}
+TOTAL: Rp ${total.toLocaleString('id-ID')}
+
+Terima kasih atas kunjungan Anda!`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: `Struk Belanja ${receipt.invoice}`,
+        text: shareText,
+      });
+    } catch (err) {
+      console.log('Sharing cancelled or failed:', err);
+    }
+  } else {
+    // Fallback: Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(shareText);
+      alert('Struk berhasil disalin ke clipboard! Silakan bagikan via WhatsApp/aplikasi chat lainnya.');
+    } catch (err) {
+      alert('Gagal membagikan struk belanja.');
+    }
+  }
+};
+
+
 const ConsumerDashboard = ({ onBack }) => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') !== 'false');
+
+  const toggleDarkMode = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    localStorage.setItem('darkMode', String(next));
+  };
 
   const [activeTab, setActiveTab] = useState('katalog');
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -56,6 +260,7 @@ const ConsumerDashboard = ({ onBack }) => {
   const [qrStatus, setQrStatus] = useState('waiting'); // 'waiting' | 'confirming' | 'success'
   const [qrCountdown, setQrCountdown] = useState(120);
   const countdownRef = useRef(null);
+  const [qrTransactionData, setQrTransactionData] = useState(null);
 
   // State untuk sukses order mandiri
   const [checkoutDone, setCheckoutDone] = useState(null);
@@ -152,7 +357,7 @@ const ConsumerDashboard = ({ onBack }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        setCheckoutDone({ ...data, paymentType: 'kasir' });
+        setCheckoutDone({ ...data, paymentType: 'kasir', items: [...cart] });
         setCart([]);
         setShowCart(false);
         showToast('success', 'Pesanan berhasil dikirim! Menunggu kasir memproses.');
@@ -180,7 +385,8 @@ const ConsumerDashboard = ({ onBack }) => {
       const data = await res.json();
       if (res.ok) {
         setQrInvoice(data.invoice);
-        setQrTotal(data.total || cartTotal);
+        setQrTotal(data.total || (cartTotal + Math.round(cartTotal * 0.01)));
+        setQrTransactionData(data);
         setQrStatus('waiting');
         setQrCountdown(120);
         setShowCart(false);
@@ -217,7 +423,13 @@ const ConsumerDashboard = ({ onBack }) => {
     setQrStatus('success');
     setTimeout(() => {
       setShowQRModal(false);
-      setCheckoutDone({ invoice: qrInvoice, total: qrTotal, paymentType: 'qris' });
+      setCheckoutDone({ 
+        invoice: qrInvoice, 
+        total: qrTotal, 
+        fee_pos: qrTransactionData?.fee_pos || Math.round(qrTotal * 0.01),
+        paymentType: 'qris', 
+        items: [...cart] 
+      });
       setCart([]);
     }, 1800);
   };
@@ -266,7 +478,11 @@ const ConsumerDashboard = ({ onBack }) => {
             <p className="text-xs text-purple-400">Konsumen</p>
           </div>
         </div>
-        <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition">
+        <button onClick={toggleDarkMode} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 transition mb-1">
+          {darkMode ? <Sun size={18} className="text-yellow-400" /> : <Moon size={18} className="text-slate-500" />}
+          <span className="text-sm font-medium">{darkMode ? 'Mode Terang' : 'Mode Gelap'}</span>
+        </button>
+        <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition">
           <LogOut size={18} /><span className="text-sm font-medium">Keluar</span>
         </button>
       </div>
@@ -274,7 +490,7 @@ const ConsumerDashboard = ({ onBack }) => {
   );
 
   return (
-    <div className="flex h-screen font-sans overflow-hidden bg-[#0b0e17] text-white">
+    <div className={`flex h-screen font-sans overflow-hidden transition-colors duration-300 ${darkMode ? 'bg-[#0b0e17] text-white' : 'bg-slate-100 text-slate-800'}`}>
 
       {/* TOAST */}
       <div className="fixed top-6 right-6 z-[100] space-y-2">
@@ -505,9 +721,19 @@ const ConsumerDashboard = ({ onBack }) => {
 
             {cart.length > 0 && (
               <div className="p-6 border-t border-slate-800 space-y-4">
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total</span>
-                  <span className="text-purple-400">Rp {cartTotal.toLocaleString()}</span>
+                <div className="space-y-1.5 text-sm text-slate-400">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span className="text-white">Rp {cartTotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>PPN / Pajak (1%)</span>
+                    <span className="text-white">Rp {Math.round(cartTotal * 0.01).toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="flex justify-between font-bold text-lg border-t border-slate-800/60 pt-3">
+                  <span>Total Pembayaran</span>
+                  <span className="text-purple-400">Rp {(cartTotal + Math.round(cartTotal * 0.01)).toLocaleString()}</span>
                 </div>
 
                 {/* ── Pilihan Metode Bayar ── */}
@@ -662,42 +888,92 @@ const ConsumerDashboard = ({ onBack }) => {
       {/* ─── MODAL PESANAN BERHASIL ─── */}
       {checkoutDone && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-[#0f1423] border border-slate-700 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl animate-in fade-in zoom-in-95">
-            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 ${checkoutDone.paymentType === 'qris' ? 'bg-emerald-500/10' : 'bg-purple-500/10'}`}>
-              <CheckCircle2 size={40} className={checkoutDone.paymentType === 'qris' ? 'text-emerald-400' : 'text-purple-400'} />
+          <div className="bg-[#0f1423] border border-slate-700 rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${checkoutDone.paymentType === 'qris' ? 'bg-emerald-500/10' : 'bg-purple-500/10'}`}>
+              <CheckCircle2 size={32} className={checkoutDone.paymentType === 'qris' ? 'text-emerald-400' : 'text-purple-400'} />
             </div>
 
             {checkoutDone.paymentType === 'qris' ? (
               <>
-                <h3 className="text-2xl font-bold mb-1">Pembayaran Sukses! 🎉</h3>
-                <p className="text-emerald-400 text-sm font-semibold mb-4">SmartBank (QRIS) terkonfirmasi</p>
+                <h3 className="text-xl font-bold mb-1">Pembayaran Sukses! 🎉</h3>
+                <p className="text-emerald-400 text-xs font-semibold mb-4">SmartBank (QRIS) terkonfirmasi</p>
               </>
             ) : (
               <>
-                <h3 className="text-2xl font-bold mb-1">Pesanan Dikirim!</h3>
-                <p className="text-slate-400 text-sm mb-4">Bayar langsung ke kasir</p>
+                <h3 className="text-xl font-bold mb-1">Pesanan Dikirim!</h3>
+                <p className="text-slate-400 text-xs mb-4">Bayar langsung ke kasir</p>
               </>
             )}
 
-            <div className="bg-slate-800/50 rounded-2xl p-4 mb-5 text-left space-y-2">
-              <div className="flex justify-between text-sm">
+            <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-4 mb-4 text-left space-y-2.5">
+              <div className="flex justify-between text-xs">
                 <span className="text-slate-400">Invoice</span>
                 <span className="font-mono font-bold text-purple-400">{checkoutDone.invoice}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Total</span>
-                <span className="font-bold text-white">Rp {Number(checkoutDone.total).toLocaleString()}</span>
+              
+              {/* Rincian Item (Digital Receipt) */}
+              {checkoutDone.items && checkoutDone.items.length > 0 && (
+                <div className="border-t border-b border-dashed border-slate-700/60 py-2.5 my-2 space-y-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Rincian Belanja</span>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {checkoutDone.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-xs">
+                        <span className="text-slate-300 truncate max-w-[180px]">{item.name} <span className="text-slate-500">x{item.qty}</span></span>
+                        <span className="text-white font-medium">Rp {(item.price * item.qty).toLocaleString('id-ID')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Rincian Pembayaran */}
+              <div className="space-y-1.5 text-xs text-slate-400 border-b border-slate-800/60 pb-2.5">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span className="text-white">Rp {Number(checkoutDone.total - (checkoutDone.fee_pos || 0)).toLocaleString('id-ID')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>PPN / Pajak (1%)</span>
+                  <span className="text-white">Rp {Number(checkoutDone.fee_pos || 0).toLocaleString('id-ID')}</span>
+                </div>
               </div>
-              <div className="flex justify-between text-sm">
+
+              <div className="flex justify-between text-xs font-bold pt-1">
+                <span className="text-slate-400">Total Pembayaran</span>
+                <span className="text-purple-400">Rp {Number(checkoutDone.total).toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex justify-between text-xs">
                 <span className="text-slate-400">Metode</span>
                 <span className="font-bold text-white">{checkoutDone.paymentType === 'qris' ? '📱 SmartBank (QRIS)' : '💵 Bayar di Kasir'}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs">
                 <span className="text-slate-400">Status</span>
                 <span className={`font-bold ${checkoutDone.paymentType === 'qris' ? 'text-emerald-400' : 'text-amber-400'}`}>
                   {checkoutDone.paymentType === 'qris' ? '✓ Lunas' : '⏳ Menunggu Kasir'}
                 </span>
               </div>
+            </div>
+
+            {/* Aksi Berbagi & Menyimpan Gambar */}
+            <div className="flex gap-2 mb-5">
+              <button 
+                onClick={() => handleShareReceipt(checkoutDone)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 10.748L15.11 7.53m0 0A3 3 0 1015 3a3 3 0 00.11 4.53zM8.684 13.252l-6.425 3.213m0 0A3 3 0 102 21a3 3 0 006.684-4.53z" />
+                </svg>
+                Bagikan
+              </button>
+              <button 
+                onClick={() => downloadReceiptImage(checkoutDone)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Simpan Struk
+              </button>
             </div>
 
             {checkoutDone.paymentType === 'kasir' && (

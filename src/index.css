@@ -116,3 +116,377 @@ body {
 .animate-in.slide-in-from-right-4 {
   animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ============================================================
+   PREMIUM LIGHT MODE - WARUNGPOS SAAS DESIGN SYSTEM v2
+   ============================================================ */
+
+.bg-slate-100 {
+  /* CSS Variables for Premium SaaS Look */
+  --bg-primary-light: #f0f4ff;
+  --bg-sidebar-light: #ffffff;
+  --bg-card-light: #ffffff;
+  --bg-modal-light: #ffffff;
+  --border-primary-light: rgba(226, 232, 240, 0.9);
+  --border-focus-light: #a855f7;
+  --text-primary-light: #0f172a;
+  --text-secondary-light: #334155;
+  --text-muted-light: #64748b;
+  --text-brand-light: #7e22ce;
+  --shadow-floating: 0 10px 30px -5px rgba(148, 163, 184, 0.12), 0 4px 10px -3px rgba(148, 163, 184, 0.08), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  --shadow-floating-hover: 0 20px 40px -8px rgba(148, 163, 184, 0.18), 0 8px 16px -4px rgba(148, 163, 184, 0.10), 0 0 0 1px rgba(168, 85, 247, 0.15);
+  --shadow-modal: 0 30px 60px -15px rgba(15, 23, 42, 0.1), 0 15px 20px -10px rgba(15, 23, 42, 0.06);
+  --purple-hover-bg: rgba(168, 85, 247, 0.06);
+  --purple-active-grad: linear-gradient(135deg, #a855f7, #7e22ce);
+}
+
+/* ── 1. Root & Body ───────────────────────────────────────── */
+body:has(.bg-slate-100) {
+  background-color: #f0f4ff !important;
+  color: #0f172a !important;
+}
+
+.bg-slate-100 {
+  background-color: #f0f4ff !important;
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(168, 85, 247, 0.06) 0px, transparent 55%),
+    radial-gradient(ellipse at 100% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 55%),
+    radial-gradient(ellipse at 50% 100%, rgba(168, 85, 247, 0.03) 0px, transparent 55%) !important;
+  background-attachment: fixed !important;
+  color: var(--text-primary-light) !important;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ── 2. Sidebar & Navigasi ────────────────────────────────── */
+.bg-slate-100 aside,
+.bg-slate-100 .w-64 {
+  background-color: #ffffff !important;
+  border-right: 1px solid var(--border-primary-light) !important;
+  box-shadow: 4px 0 24px -4px rgba(148, 163, 184, 0.08) !important;
+  background-image: none !important;
+}
+
+/* Tombol sidebar — semua varian */
+.bg-slate-100 aside nav button,
+.bg-slate-100 .w-64 nav button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  color: #475569 !important;
+  background: transparent !important;
+}
+
+/* Sidebar hover — ungu muda */
+.bg-slate-100 aside nav button:not(.bg-purple-600):hover,
+.bg-slate-100 .w-64 nav button:not(.bg-purple-600):hover {
+  background-color: var(--purple-hover-bg) !important;
+  color: #7e22ce !important;
+  transform: translateX(4px);
+}
+
+/* Sidebar active — gradient ungu WarungPOS */
+.bg-slate-100 aside nav button.bg-purple-600,
+.bg-slate-100 .w-64 nav button.bg-purple-600 {
+  background: var(--purple-active-grad) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px -4px rgba(168, 85, 247, 0.35) !important;
+}
+
+/* ── 3. Header Frosted Glass ──────────────────────────────── */
+.bg-slate-100 header {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-bottom: 1px solid var(--border-primary-light) !important;
+  box-shadow: 0 1px 8px -2px rgba(148, 163, 184, 0.1) !important;
+  background-image: none !important;
+}
+
+.bg-slate-100 .h-20 {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid var(--border-primary-light) !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+}
+
+/* ── 4. Penghapusan Abu-abu Menyeluruh (Wildcard) ────────── */
+
+/* Semua bg-slate-700, 800, 900, 950 dan varian opacity-nya → putih */
+.bg-slate-100 [class*="bg-slate-7"],
+.bg-slate-100 [class*="bg-slate-8"],
+.bg-slate-100 [class*="bg-slate-9"],
+.bg-slate-100 [class*="bg-slate-950"],
+.bg-slate-100 [class*="bg-slate-900"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+/* Semua bg-[#0f1423] and bg-[#0b0e17] → putih */
+.bg-slate-100 [class*="bg-[#0f"],
+.bg-slate-100 [class*="bg-[#0b"],
+.bg-slate-100 [class*="bg-[#0b0e17]"] {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+/* Kategori, button drawer background, filter bar yang ada abu-abu → putih */
+.bg-slate-100 [class*="bg-slate-"],
+.bg-slate-100 [class*="bg-slate-800/"] {
+  background-color: #ffffff !important;
+}
+
+/* Penjualan Terakhir dan section background di dashboard */
+.bg-slate-100 .bg-slate-900\/50,
+.bg-slate-100 .bg-slate-800\/50,
+.bg-slate-100 .bg-slate-800\/40,
+.bg-slate-100 .bg-slate-800\/30,
+.bg-slate-100 .bg-slate-800\/20,
+.bg-slate-100 .bg-\[\#0f1423\]\/50 {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+/* ── 5. Cards Floating White ──────────────────────────────── */
+
+/* Card utama: rounded box dengan shadow floating */
+.bg-slate-100 .rounded-2xl,
+.bg-slate-100 .rounded-3xl,
+.bg-slate-100 .rounded-\[2\.5rem\],
+.bg-slate-100 .rounded-\[1\.5rem\] {
+  background-color: #ffffff !important;
+  box-shadow: var(--shadow-floating) !important;
+  border: 1px solid var(--border-primary-light) !important;
+}
+
+/* Hover card: naik & shadow ungu halus */
+.bg-slate-100 .rounded-2xl:hover:not(button):not(input):not(select),
+.bg-slate-100 .rounded-3xl:hover:not(button):not(input):not(select),
+.bg-slate-100 .rounded-\[2\.5rem\]:hover:not(button):not(input):not(select) {
+  box-shadow: var(--shadow-floating-hover) !important;
+  transform: translateY(-3px);
+  background-color: #ffffff !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── 6. Border & Divider Sangat Terang / Transparan ───────── */
+.bg-slate-100 [class*="border-slate-"],
+.bg-slate-100 [class*="border-\\[#"],
+.bg-slate-100 .border-slate-800,
+.bg-slate-100 .border-slate-700,
+.bg-slate-100 .border-slate-600 {
+  border-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+.bg-slate-100 [class*="divide-slate-"] > * + * {
+  border-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+/* ── 7. Audit Warna Teks Kontras Tinggi di Light Mode ─────── */
+
+/* Judul (h1, h2, h3, h4, h5, h6, text-white, font-bold) harus hitam/sangat gelap */
+.bg-slate-100 h1,
+.bg-slate-100 h2,
+.bg-slate-100 h3,
+.bg-slate-100 h4,
+.bg-slate-100 h5,
+.bg-slate-100 h6,
+.bg-slate-100 .text-white,
+.bg-slate-100 .font-bold,
+.bg-slate-100 .font-extrabold {
+  color: #0b0f19 !important;
+}
+
+/* Isi teks harus kontras dan mudah dibaca */
+.bg-slate-100 p,
+.bg-slate-100 span,
+.bg-slate-100 div,
+.bg-slate-100 label,
+.bg-slate-100 td {
+  color: #1e293b !important;
+}
+
+/* Teks bernuansa abu-abu/meta yang pudar kita buat kontras (tidak ada abu-abu pudar di atas putih) */
+.bg-slate-100 .text-slate-400,
+.bg-slate-100 .text-slate-500 {
+  color: #475569 !important; /* Terlihat jelas sebagai subtitle/keterangan */
+}
+
+.bg-slate-100 .text-slate-300,
+.bg-slate-100 .text-slate-200,
+.bg-slate-100 .text-slate-100 {
+  color: #334155 !important;
+}
+
+/* Harga, total, status, badge, angka penting harus kontras tinggi */
+.bg-slate-100 .text-purple-400,
+.bg-slate-100 .text-purple-300,
+.bg-slate-100 [class*="text-purple-"] {
+  color: #7e22ce !important; /* Warna ungu WarungPOS kontras tinggi */
+  font-weight: 700 !important;
+}
+
+.bg-slate-100 .text-emerald-400 { color: #059669 !important; font-weight: 700 !important; }
+.bg-slate-100 .text-emerald-300 { color: #047857 !important; font-weight: 700 !important; }
+.bg-slate-100 .text-amber-400 { color: #d97706 !important; font-weight: 700 !important; }
+.bg-slate-100 .text-red-400 { color: #dc2626 !important; font-weight: 700 !important; }
+.bg-slate-100 .text-blue-400 { color: #1d4ed8 !important; font-weight: 700 !important; }
+
+/* Menjamin ikon lucide (svg stroke) memiliki kontras yang baik */
+.bg-slate-100 svg {
+  stroke: currentColor !important;
+}
+.bg-slate-100 svg[class*="text-slate-400"],
+.bg-slate-100 svg[class*="text-slate-500"] {
+  stroke: #475569 !important;
+}
+
+/* ── 8. Modal & Overlay ───────────────────────────────────── */
+.bg-slate-100 .fixed.inset-0.bg-black\/80,
+.bg-slate-100 .fixed.inset-0.bg-black\/70,
+.bg-slate-100 .fixed.inset-0.bg-black\/60 {
+  background-color: rgba(15, 23, 42, 0.25) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+/* Panel modal: harus putih bersih */
+.bg-slate-100 .fixed.inset-0 [class*="bg-[#0f"],
+.bg-slate-100 .fixed.inset-0 [class*="bg-[#0b"],
+.bg-slate-100 .fixed.inset-0 [class*="bg-slate-9"],
+.bg-slate-100 .fixed.inset-0 .bg-slate-900,
+.bg-slate-100 .fixed.inset-0 .rounded-3xl,
+.bg-slate-100 .fixed.inset-0 .rounded-2xl {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid var(--border-primary-light) !important;
+  box-shadow: var(--shadow-modal) !important;
+}
+
+/* ── 9. Form, Input, Select & Textarea ───────────────────── */
+.bg-slate-100 input,
+.bg-slate-100 select,
+.bg-slate-100 textarea {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0b0f19 !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03) !important;
+  transition: all 0.2s ease !important;
+  background-image: none !important;
+}
+
+.bg-slate-100 input:focus,
+.bg-slate-100 select:focus,
+.bg-slate-100 textarea:focus {
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15) !important;
+  outline: none !important;
+}
+
+.bg-slate-100 input::placeholder,
+.bg-slate-100 textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* ── 10. Tabel → Card Putih Terpisah ─────────────────────── */
+.bg-slate-100 table {
+  border-collapse: separate !important;
+  border-spacing: 0 8px !important;
+  width: 100% !important;
+}
+
+.bg-slate-100 thead tr {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.bg-slate-100 th {
+  background-color: transparent !important;
+  color: #475569 !important;
+  font-weight: 700 !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  border-bottom: 1px solid var(--border-primary-light) !important;
+  padding: 12px 16px !important;
+}
+
+/* Setiap baris transaksi = card putih terpisah */
+.bg-slate-100 tbody tr {
+  background-color: #ffffff !important;
+  box-shadow: var(--shadow-floating) !important;
+  border-radius: 0.875rem !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+/* Hover row tabel: ungu muda lembut */
+.bg-slate-100 tbody tr:hover {
+  background-color: var(--purple-hover-bg) !important;
+  box-shadow: var(--shadow-floating-hover) !important;
+  transform: translateY(-2px);
+}
+
+.bg-slate-100 tbody tr td {
+  border: none !important;
+  padding: 16px !important;
+  color: #1e293b !important;
+}
+
+/* ── 11. Progress Bars & Badges ───────────────────────────── */
+.bg-slate-100 [class*="bg-slate-8"].h-2,
+.bg-slate-100 [class*="bg-slate-7"].h-2 {
+  background-color: #e2e8f0 !important;
+}
+
+/* Badges / Pill */
+.bg-slate-100 [class*="bg-purple-500/10"],
+.bg-slate-100 [class*="bg-purple-600/10"] {
+  background-color: rgba(168, 85, 247, 0.12) !important;
+  color: #7e22ce !important;
+}
+
+.bg-slate-100 [class*="bg-emerald-500/10"] {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+  color: #047857 !important;
+}
+
+.bg-slate-100 [class*="bg-red-500/10"] {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+  color: #b91c1c !important;
+}
+
+/* ── 12. Hover state tombol kecil non-branded ─────────────── */
+.bg-slate-100 button:not([class*="bg-purple"]):not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-amber"]):hover {
+  background-color: var(--purple-hover-bg) !important;
+  color: #7e22ce !important;
+}
+
+/* Proteksi: tombol dengan class warna sendiri tidak boleh dioverride hover */
+.bg-slate-100 button[class*="bg-purple"]:hover,
+.bg-slate-100 button[class*="bg-emerald"]:hover,
+.bg-slate-100 button[class*="bg-red"]:hover {
+  background-color: revert !important;
+  color: revert !important;
+}
+
+/* ── 13. Avatar & Image Placeholder ──────────────────────── */
+.bg-slate-100 [class*="bg-slate-"][class*="rounded-full"],
+.bg-slate-100 [class*="bg-slate-"][class*="rounded-xl"] {
+  background-color: #f1f5f9 !important;
+}
+
+/* ── 14. Scrollbar ────────────────────────────────────────── */
+.bg-slate-100 ::-webkit-scrollbar-track { background: #f1f5f9 !important; }
+.bg-slate-100 ::-webkit-scrollbar-thumb { background: #cbd5e1 !important; border-radius: 10px !important; }
+.bg-slate-100 ::-webkit-scrollbar-thumb:hover { background: #a855f7 !important; }
+
+/* ── 15. Proteksi status badge & logo text ────────────────── */
+.bg-slate-100 .text-purple-600 {
+  color: #7e22ce !important;
+}
+.bg-slate-100 .text-emerald-600 {
+  color: #047857 !important;
+}
+
+
+

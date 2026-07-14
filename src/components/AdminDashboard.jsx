@@ -30,7 +30,8 @@ import {
   Camera,
   UserCircle,
   Menu,
-  Eye
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { kmpSearch } from '../utils/stringMatcher';
 import { getGreedyChange } from '../utils/greedyChange';
@@ -239,6 +240,8 @@ const AdminDashboard = ({ onBack }) => {
   const [toast, setToast] = useState(null);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMsg, setPasswordMsg] = useState({ type: '', text: '' });
+  const [showPasswordFields, setShowPasswordFields] = useState({ oldPassword: false, newPassword: false, confirmPassword: false });
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [accountSettings, setAccountSettings] = useState(() => {
     try { return JSON.parse(localStorage.getItem('accountSettings') || '{"notifications":true,"kasirSound":false,"language":"id","showWelcome":true}'); }
     catch { return { notifications: true, kasirSound: false, language: 'id', showWelcome: true }; }
@@ -3126,9 +3129,15 @@ const AdminDashboard = ({ onBack }) => {
               ].map(({ label, key, placeholder }) => (
                 <div key={key}>
                   <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">{label}</label>
-                  <input type="password" value={passwordForm[key]} onChange={(e) => setPasswordForm({...passwordForm, [key]: e.target.value})}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition"
-                    placeholder={placeholder} required />
+                  <div className="relative">
+                    <input type={showPasswordFields[key] ? "text" : "password"} value={passwordForm[key]} onChange={(e) => setPasswordForm({...passwordForm, [key]: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 pr-12 text-white focus:outline-none focus:border-purple-500 transition"
+                      placeholder={placeholder} required />
+                    <button type="button" onClick={() => setShowPasswordFields(prev => ({...prev, [key]: !prev[key]}))}
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-200 transition-colors">
+                      {showPasswordFields[key] ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
               ))}
 
@@ -3195,14 +3204,20 @@ const AdminDashboard = ({ onBack }) => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Password</label>
-                <input 
-                  type="password" 
-                  value={staffForm.password} 
-                  onChange={(e) => setStaffForm({...staffForm, password: e.target.value})}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition text-sm"
-                  placeholder="Min. 6 karakter" 
-                  required 
-                />
+                <div className="relative">
+                  <input 
+                    type={showStaffPassword ? "text" : "password"} 
+                    value={staffForm.password} 
+                    onChange={(e) => setStaffForm({...staffForm, password: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 pr-12 text-white focus:outline-none focus:border-purple-500 transition text-sm"
+                    placeholder="Min. 6 karakter" 
+                    required 
+                  />
+                  <button type="button" onClick={() => setShowStaffPassword(p => !p)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-200 transition-colors">
+                    {showStaffPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <div>

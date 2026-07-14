@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Store, ShoppingCart } from 'lucide-react';
+import { Store, ShoppingCart, Eye, EyeOff } from 'lucide-react';
 
 /**
  * Login.jsx — 3 Mode:
@@ -12,6 +12,7 @@ const Login = ({ onSuccess, onBack }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -162,10 +163,19 @@ const Login = ({ onSuccess, onBack }) => {
           {/* INPUT PASSWORD */}
           <div className="mb-6">
             <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Password</label>
-            <input type="password" placeholder="••••••••"
-              className="w-full p-3 rounded-xl bg-slate-900 border border-slate-800 focus:outline-none focus:border-purple-500 transition text-sm"
-              value={password} onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+            <div className="relative">
+              <input type={showPassword ? "text" : "password"} placeholder="••••••••"
+                className="w-full p-3 pr-10 rounded-xl bg-slate-900 border border-slate-800 focus:outline-none focus:border-purple-500 transition text-sm"
+                value={password} onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           {/* SUBMIT BUTTON */}
